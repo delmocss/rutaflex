@@ -4,18 +4,30 @@
 
 Optimización de rutas de reparto para una pequeña empresa de paquetería: recibe las paradas del día y la flota disponible y devuelve **una ruta por furgoneta** que respeta capacidad y franjas horarias.
 
-> Estado: **en construcción** (MVP previsto para el 31 de enero). Hoy hay esqueleto, API de datos (almacenes, furgonetas, paradas) e importación CSV; el optimizador y Kafka llegan en las siguientes fases. Esta tabla se actualiza con cada fase.
+> Estado: **en construcción** (MVP previsto para el 31 de enero). Hoy hay esqueleto, API de datos (almacenes, furgonetas, paradas), importación CSV y una UI para verlo todo en un mapa; el optimizador y Kafka llegan en las siguientes fases. Esta tabla se actualiza con cada fase.
 
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Esqueleto: Maven multi-módulo, `docker compose`, Flyway, CI | ✅ |
 | 2 | Almacén, furgonetas y paradas (PostGIS), importación CSV, dataset de ejemplo | ✅ |
-| 2b | UI de solo lectura (Angular + Leaflet): ver almacén, furgonetas y paradas en el mapa | ⏳ |
+| 2b | UI de solo lectura (Angular + Leaflet): almacén, furgonetas y paradas en el mapa, e importación CSV | ✅ |
 | 3 | Optimizador con Timefold y sus restricciones | ⏳ |
 | 4-5 | Kafka: trabajo asíncrono, idempotencia, dead letter, test de extremo a extremo | ⏳ |
 | 6 | Restricciones reales y medición de km ahorrados | ⏳ |
 | 7 | Angular + Leaflet y JWT con dos roles | ⏳ |
 | 8-9 | Despliegue, documentación y vídeo | ⏳ |
+
+## Interfaz
+
+![Mapa de paradas de reparto en Madrid sur](docs/images/ui-map.png)
+
+Angular 21 + Leaflet (`frontend/`): elige el día de reparto, ve el resumen (paradas, bultos frente a la capacidad de la flota), la flota y las paradas en la lista y en el mapa (ámbar = con franja horaria), e importa un CSV desde el panel. Los errores de la API se muestran en español, línea a línea. Detalles en [`frontend/README.md`](frontend/README.md).
+
+```bash
+docker compose up -d postgis
+RUTAFLEX_SAMPLE_DATA_ENABLED=true mvn -pl route-api spring-boot:run   # API con los datos de ejemplo
+cd frontend && npm install && npm start                               # http://localhost:4200
+```
 
 ## Arquitectura
 
@@ -37,10 +49,11 @@ flowchart LR
 | `common-events` | Contrato entre servicios: nombres de topics y eventos. Java puro, sin Spring. |
 | `route-api` | API REST y dueña de los datos (Flyway + PostGIS). |
 | `optimizer-service` | Consume el problema, calcula las rutas y publica el resultado. Sin base de datos. |
+| `frontend` | UI Angular + Leaflet (no es un módulo Maven). |
 
 ## Stack
 
-Java 21 · Spring Boot 3.5 · Maven multi-módulo · PostgreSQL 16 + PostGIS · Flyway · Apache Kafka (modo KRaft) · Timefold Solver 1.x · JUnit 5 + Testcontainers.
+Java 21 · Spring Boot 3.5 · Maven multi-módulo · PostgreSQL 16 + PostGIS · Flyway · Apache Kafka (modo KRaft) · Timefold Solver 1.x · JUnit 5 + Testcontainers · Angular 21 + Leaflet.
 
 Timefold 1.x y no 2.x porque la línea 2.x exige Spring Boot 4 y este proyecto usa Spring Boot 3.
 
@@ -100,4 +113,6 @@ Crea un almacén, cuatro furgonetas (4 × 60 bultos) y las 80 paradas, todo en u
 - `route-api`: PostgreSQL + PostGIS **reales** con Testcontainers (nunca H2), con un único contenedor compartido: migraciones de Flyway, geografía en metros, restricciones del esquema, los CRUD de almacenes, furgonetas y paradas, la importación CSV (todo o nada, errores por fila, `replace` atómico) y el dataset de ejemplo.
 - `optimizer-service`: arranca y responde en `/actuator/health`.
 
-El CI de GitHub Actions ejecuta el mismo `mvn verify`.
+- `frontend`: 31 tests unitarios con Vitest (lógica de dominio, traducción de errores, estado y cliente HTTP) más `npm run build` y el formato con Prettier.
+
+El CI de GitHub Actions ejecuta `mvn verify` y los comandos del frontend.

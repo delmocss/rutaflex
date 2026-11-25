@@ -1,0 +1,123 @@
+<header class="topbar">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect width="24" height="24" rx="6" fill="#0e7490" />
+      <path
+        d="M6 17c3 0 3-10 6-10s3 10 6 10"
+        stroke="#fff"
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+      <circle cx="6" cy="17" r="1.6" fill="#fff" />
+      <circle cx="18" cy="17" r="1.6" fill="#fff" />
+    </svg>
+    <div>
+      <h1>RutaFlex</h1>
+      <span class="tagline">Datos de reparto · Madrid sur</span>
+    </div>
+  </div>
+
+  @if (store.warehouses().length > 1) {
+    <label class="warehouse-select">
+      Almacén
+      <select (change)="onWarehouse($event)" [value]="store.warehouse()?.id">
+        @for (warehouse of store.warehouses(); track warehouse.id) {
+          <option [value]="warehouse.id" [selected]="warehouse.id === store.warehouse()?.id">
+            {{ warehouse.name }}
+          </option>
+        }
+      </select>
+    </label>
+  } @else if (store.warehouse(); as warehouse) {
+    <span class="warehouse-name" title="{{ warehouse.address }}">{{ warehouse.name }}</span>
+  }
+
+  <button type="button" class="reload" (click)="store.load()" [disabled]="store.loading()">
+    {{ store.loading() ? 'Cargando…' : 'Recargar' }}
+  </button>
+</header>
+
+<p class="sr-only" aria-live="polite">
+  @if (store.selectedStop(); as stop) {
+    Parada seleccionada: {{ stop.address }}, {{ stop.parcels }} bultos
+  }
+</p>
+
+<main class="layout">
+  <aside class="panel" aria-label="Panel de datos">
+    @if (store.error(); as error) {
+      <div class="banner" role="alert">
+        <strong>{{ error.message }}</strong>
+        @for (detail of error.details; track $index) {
+          <div>{{ detail }}</div>
+        }
+        <button type="button" (click)="store.load()">Reintentar</button>
+      </div>
+    }
+
+    <section>
+      <label class="day-select">
+        Día de reparto
+        <select
+          (change)="onDay($event)"
+          [value]="store.selectedDate()"
+          [disabled]="store.days().length === 0"
+        >
+          @for (day of store.days(); track day.date) {
+            <option [value]="day.date" [selected]="day.date === store.selectedDate()">
+              {{ dayLabel(day) }}
+            </option>
+          } @empty {
+            <option value="">Sin días con paradas</option>
+          }
+        </select>
+      </label>
+      <app-summary-cards [summary]="store.summary()" />
+    </section>
+
+    <section>
+      <h2>Flota</h2>
+      <app-fleet-list [vehicles]="store.vehicles()" />
+    </section>
+
+    <section class="stops">
+      <h2>
+        Paradas <span class="count">{{ store.stops().length }}</span>
+      </h2>
+      <div class="stops-scroll">
+        <app-stop-list
+          [stops]="store.stops()"
+          [selectedId]="store.selectedStopId()"
+          (selected)="store.selectStop($event)"
+        />
+      </div>
+    </section>
+
+    <details class="import">
+      <summary>Importar paradas desde CSV</summary>
+      <app-import-panel />
+    </details>
+  </aside>
+
+  <section class="map-area" aria-label="Mapa">
+    <app-route-map
+      [warehouse]="store.warehouse()"
+      [stops]="store.stops()"
+      [selectedStopId]="store.selectedStopId()"
+      (stopSelected)="store.selectStop($event)"
+    />
+
+    @if (store.loading() && store.stops().length === 0) {
+      <div class="overlay" role="status">Cargando datos…</div>
+    }
+
+    @if (store.isEmpty()) {
+      <div class="overlay empty" role="status">
+        <h2>Todavía no hay datos</h2>
+        <p>Arranca la API con los datos de ejemplo de Madrid sur:</p>
+        <pre>RUTAFLEX_SAMPLE_DATA_ENABLED=true mvn -pl route-api spring-boot:run</pre>
+        <p>o crea un almacén y sus furgonetas por la API e importa un CSV desde el panel.</p>
+      </div>
+    }
+  </section>
+</main>
