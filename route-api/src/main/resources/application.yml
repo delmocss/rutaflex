@@ -12,6 +12,11 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  web:
+    # Mensajes de validacion siempre en ingles, sea cual sea el idioma del servidor o del cliente:
+    # la API responde igual en cualquier maquina (y los tests no dependen de la configuracion regional).
+    locale: en
+    locale-resolver: fixed
   servlet:
     multipart:
       max-file-size: 1MB

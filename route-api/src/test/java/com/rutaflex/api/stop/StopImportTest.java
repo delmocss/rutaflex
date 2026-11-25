@@ -79,6 +79,24 @@ class StopImportTest extends AbstractApiTest {
     }
 
     @Test
+    void validationMessagesAreAlwaysInEnglishWhateverTheClientLanguage() throws Exception {
+        mvc.perform(multipart("/api/stops/import")
+                        .file(file("address,lat,lon,parcels\nCalle,40.2,-3.7,0\n"))
+                        .param("date", DAY)
+                        .header("Accept-Language", "es-ES"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value("row 1: parcels must be greater than or equal to 1"));
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/stops")
+                        .header("Accept-Language", "es-ES")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"deliveryDate\": \"2026-12-14\", \"address\": \"x\", "
+                                + "\"location\": {\"lat\": 40.2, \"lon\": -3.7}, \"parcels\": 0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.parcels").value("must be greater than or equal to 1"));
+    }
+
+    @Test
     void rejectsNonFiniteCoordinates() throws Exception {
         post("address,lat,lon,parcels\nA,NaN,-3.7,1\nB,Infinity,-3.7,1\n", DAY, false)
                 .andExpect(status().isBadRequest())
