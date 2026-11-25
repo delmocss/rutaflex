@@ -4,12 +4,13 @@
 
 Optimización de rutas de reparto para una pequeña empresa de paquetería: recibe las paradas del día y la flota disponible y devuelve **una ruta por furgoneta** que respeta capacidad y franjas horarias.
 
-> Estado: **en construcción** (MVP previsto para el 31 de enero). Lo que hay hoy es el esqueleto: módulos, infraestructura local, esquema de base de datos y CI. Esta tabla se actualiza con cada fase.
+> Estado: **en construcción** (MVP previsto para el 31 de enero). Hoy hay esqueleto, API de datos (almacenes, furgonetas, paradas) e importación CSV; el optimizador y Kafka llegan en las siguientes fases. Esta tabla se actualiza con cada fase.
 
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Esqueleto: Maven multi-módulo, `docker compose`, Flyway, CI | ✅ |
-| 2 | Almacén, furgonetas y paradas (PostGIS), importación CSV | ⏳ |
+| 2 | Almacén, furgonetas y paradas (PostGIS), importación CSV, dataset de ejemplo | ✅ |
+| 2b | UI de solo lectura (Angular + Leaflet): ver almacén, furgonetas y paradas en el mapa | ⏳ |
 | 3 | Optimizador con Timefold y sus restricciones | ⏳ |
 | 4-5 | Kafka: trabajo asíncrono, idempotencia, dead letter, test de extremo a extremo | ⏳ |
 | 6 | Restricciones reales y medición de km ahorrados | ⏳ |
@@ -57,12 +58,46 @@ mvn -pl optimizer-service spring-boot:run  # http://localhost:8081/actuator/heal
 
 `docker compose down -v` lo para y borra los datos.
 
+## API de datos (`route-api`)
+
+Sin autenticación por ahora: el JWT con dos roles llega en la fase de seguridad. Los errores salen como `application/problem+json` (RFC 7807) y los mensajes de validación siempre en inglés.
+
+| Método y ruta | Qué hace |
+|---|---|
+| `POST /api/warehouses` · `GET /api/warehouses` · `GET/PUT/DELETE /api/warehouses/{id}` | Almacén (punto de salida). No se puede borrar si tiene trabajos de optimización (409). |
+| `POST/GET /api/warehouses/{id}/vehicles` · `GET/PUT/DELETE /api/vehicles/{id}` | Furgonetas: capacidad en bultos y jornada. Nombre único por almacén. |
+| `POST /api/stops` · `GET /api/stops?date=` · `GET/PUT/DELETE /api/stops/{id}` | Paradas de un día, con franja horaria opcional (completa o ninguna). |
+| `GET /api/stops/dates` | Días con paradas, con totales de paradas y bultos. |
+| `DELETE /api/stops?date=` | Borra todas las paradas de un día. |
+| `POST /api/stops/import?date=&replace=` | Importa un CSV (campo `file`). Todo o nada. |
+
+### Importación CSV
+
+```csv
+address,lat,lon,parcels,window_start,window_end
+"Calle Mayor 1, Pinto",40.2428,-3.6997,3,09:00,11:00
+Calle Real 5 Getafe,40.3057,-3.7329,1,,
+```
+
+UTF-8 (con o sin BOM), separador coma, decimales con punto. Columnas obligatorias: `address`, `lat`, `lon`, `parcels`; opcionales `window_start` y `window_end` (HH:mm, ambas o ninguna). El orden de las columnas y las mayúsculas dan igual. **Si una sola fila es inválida no se importa ninguna**, y la respuesta lista cada problema con su fila. Máximo 1000 filas (`rutaflex.import.max-rows`). Con `replace=true` se sustituyen las paradas de ese día en una sola transacción: si el CSV falla, el día queda como estaba.
+
+### Datos de ejemplo
+
+El dataset de Madrid sur (80 paradas en Valdemoro, Pinto y Getafe, 205 bultos, 28 con franja horaria) es **sintético**: las direcciones son inventadas y las coordenadas se muestrean dentro del casco urbano de cada municipio; no son portales reales. Lo genera `data/generate_madrid_sur_stops.py` con semilla fija, así que es reproducible.
+
+```bash
+docker compose up -d postgis
+RUTAFLEX_SAMPLE_DATA_ENABLED=true RUTAFLEX_SAMPLE_DATA_DELIVERY_DATE=2026-12-14   mvn -pl route-api spring-boot:run
+```
+
+Crea un almacén, cuatro furgonetas (4 × 60 bultos) y las 80 paradas. Si ya hay almacenes, no toca nada.
+
 ## Tests
 
 `mvn verify` ejecuta, por módulo:
 
 - `common-events`: los eventos viajan como JSON y vuelven iguales.
-- `route-api`: PostgreSQL + PostGIS **reales** con Testcontainers (nunca H2): las migraciones de Flyway, la geografía en metros y las restricciones del esquema (jornada válida, franja horaria completa, trabajo fallido con motivo).
+- `route-api`: PostgreSQL + PostGIS **reales** con Testcontainers (nunca H2), con un único contenedor compartido: migraciones de Flyway, geografía en metros, restricciones del esquema, los CRUD de almacenes, furgonetas y paradas, la importación CSV (todo o nada, errores por fila, `replace` atómico) y el dataset de ejemplo.
 - `optimizer-service`: arranca y responde en `/actuator/health`.
 
 El CI de GitHub Actions ejecuta el mismo `mvn verify`.
