@@ -1,5 +1,7 @@
 # RutaFlex
 
+[![CI](https://github.com/delmocss/rutaflex/actions/workflows/ci.yml/badge.svg)](https://github.com/delmocss/rutaflex/actions/workflows/ci.yml)
+
 Optimización de rutas de reparto para una pequeña empresa de paquetería: recibe las paradas del día y la flota disponible y devuelve **una ruta por furgoneta** que respeta capacidad y franjas horarias.
 
 > Estado: **en construcción** (MVP previsto para el 31 de enero). Lo que hay hoy es el esqueleto: módulos, infraestructura local, esquema de base de datos y CI. Esta tabla se actualiza con cada fase.
