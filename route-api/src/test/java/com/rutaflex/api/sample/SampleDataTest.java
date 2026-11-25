@@ -4,9 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.rutaflex.api.AbstractApiTest;
 import com.rutaflex.api.stop.ImportResult;
+import com.rutaflex.api.stop.StopImportService;
+import com.rutaflex.api.stop.StopResponse;
 import com.rutaflex.api.stop.StopService;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.List;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
@@ -24,12 +33,15 @@ class SampleDataTest extends AbstractApiTest {
     SampleDataSeeder seeder;
 
     @Autowired
+    StopImportService stopImport;
+
+    @Autowired
     StopService stops;
 
     @Test
     void theSampleCsvImportsCleanlyAndLooksLikeMadridSur() throws Exception {
         try (InputStream csv = new ClassPathResource(SampleDataSeeder.STOPS_RESOURCE).getInputStream()) {
-            ImportResult result = stops.importCsv(DAY, csv, false);
+            ImportResult result = stopImport.importCsv(DAY, csv, false);
             assertThat(result.imported()).isEqualTo(80);
         }
 
@@ -55,6 +67,30 @@ class SampleDataTest extends AbstractApiTest {
     }
 
     @Test
+    void stopsComeBackInTheOrderOfTheFile() throws Exception {
+        try (InputStream csv = new ClassPathResource(SampleDataSeeder.STOPS_RESOURCE).getInputStream()) {
+            stopImport.importCsv(DAY, csv, false);
+        }
+
+        List<String> fileOrder = new java.util.ArrayList<>();
+        try (Reader reader = new InputStreamReader(
+                new ClassPathResource(SampleDataSeeder.STOPS_RESOURCE).getInputStream(), StandardCharsets.UTF_8);
+             CSVParser parser = CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).get().parse(reader)) {
+            for (CSVRecord record : parser) {
+                fileOrder.add(record.get("address") + "|" + record.get("lat") + "|" + record.get("lon"));
+            }
+        }
+
+        List<String> listed = stops.listByDate(DAY).stream()
+                .map(StopResponse::address)
+                .toList();
+        List<String> expectedAddresses = fileOrder.stream().map(row -> row.split("\\|")[0]).toList();
+
+        // Es la linea base de "sin optimizar": el orden de llegada debe ser el del fichero, siempre.
+        assertThat(listed).containsExactlyElementsOf(expectedAddresses);
+    }
+
+    @Test
     void seederCreatesTheFleetAndTheStopsAndIsIdempotent() throws Exception {
         seeder.run(null);
 
@@ -68,5 +104,18 @@ class SampleDataTest extends AbstractApiTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM warehouse", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM vehicle", Integer.class)).isEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM delivery_stop", Integer.class)).isEqualTo(80);
+    }
+
+    @Test
+    void seederNeverTouchesExistingData() throws Exception {
+        // Paradas cargadas a mano para ese mismo dia, sin ningun almacen: no se borran ni se mezclan.
+        jdbc.update("""
+                INSERT INTO delivery_stop (delivery_date, address, location, parcels)
+                VALUES ('2026-12-14', 'Parada real', ST_SetSRID(ST_MakePoint(-3.7, 40.2), 4326)::geography, 1)""");
+
+        seeder.run(null);
+
+        assertThat(jdbc.queryForList("SELECT address FROM delivery_stop", String.class)).containsExactly("Parada real");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM warehouse", Integer.class)).isZero();
     }
 }

@@ -57,8 +57,20 @@ class StopRepository {
         batchJdbc.batchUpdate(INSERT, batch);
     }
 
+    /**
+     * Serializa las operaciones masivas sobre un mismo dia (reemplazos, borrados): sin esto, dos
+     * importaciones con replace a la vez borran las dos las filas viejas y luego insertan las dos.
+     * El bloqueo se libera solo al terminar la transaccion.
+     */
+    void lockDay(LocalDate date) {
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtext(:key))")
+                .param("key", "delivery_stop:" + date)
+                .query((rs, row) -> 0)
+                .list();
+    }
+
     List<StopResponse> findByDate(LocalDate date) {
-        return jdbc.sql("SELECT " + COLUMNS + " FROM delivery_stop WHERE delivery_date = :date ORDER BY created_at, id")
+        return jdbc.sql("SELECT " + COLUMNS + " FROM delivery_stop WHERE delivery_date = :date ORDER BY seq")
                 .param("date", date)
                 .query(MAPPER)
                 .list();

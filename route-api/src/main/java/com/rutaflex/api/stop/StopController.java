@@ -2,6 +2,7 @@ package com.rutaflex.api.stop;
 
 import jakarta.validation.Valid;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
@@ -25,9 +26,11 @@ import org.springframework.web.multipart.MultipartFile;
 class StopController {
 
     private final StopService service;
+    private final StopImportService importService;
 
-    StopController(StopService service) {
+    StopController(StopService service, StopImportService importService) {
         this.service = service;
+        this.importService = importService;
     }
 
     @PostMapping
@@ -53,8 +56,9 @@ class StopController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(defaultValue = "false") boolean replace,
             @RequestParam("file") MultipartFile file) throws IOException {
-        ImportResult result = service.importCsv(date, file.getInputStream(), replace);
-        return ResponseEntity.status(201).body(result);
+        try (InputStream csv = file.getInputStream()) {
+            return ResponseEntity.status(201).body(importService.importCsv(date, csv, replace));
+        }
     }
 
     @GetMapping("/{id}")

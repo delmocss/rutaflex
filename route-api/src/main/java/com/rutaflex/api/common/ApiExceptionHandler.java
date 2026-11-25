@@ -1,17 +1,20 @@
 package com.rutaflex.api.common;
 
 import jakarta.validation.ConstraintViolationException;
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -73,10 +76,47 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "A resource with the same unique values already exists");
     }
 
+    /**
+     * Spring agrupa bajo esta excepcion toda la clase 22 (dato no almacenable) y 23 (restriccion) de
+     * SQLSTATE, asi que se distingue por el codigo: un dato invalido es un 400, no un conflicto.
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     ProblemDetail handleIntegrity(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        String sqlState = sqlState(ex);
+        log.warn("Data integrity violation (SQLSTATE {}): {}", sqlState, ex.getMostSpecificCause().getMessage());
+
+        if (sqlState != null && sqlState.startsWith("22")) {
+            return ProblemDetail.forStatusAndDetail(
+                    HttpStatus.BAD_REQUEST, "The request contains a value the database cannot store");
+        }
+        if ("23514".equals(sqlState)) {
+            return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "The data violates a validation rule");
+        }
         return ProblemDetail.forStatusAndDetail(
-                HttpStatus.CONFLICT, "The operation conflicts with existing data (the resource is referenced elsewhere)");
+                HttpStatus.CONFLICT,
+                "The operation conflicts with existing data (a referenced resource is missing or still in use)");
+    }
+
+    /** Base de datos inaccesible: no es un fallo de la peticion ni un bug, es un 503 reintentable. */
+    @ExceptionHandler({DataAccessResourceFailureException.class, CannotGetJdbcConnectionException.class})
+    ProblemDetail handleDatabaseDown(Exception ex) {
+        log.error("Database unavailable", ex);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, "The service is temporarily unavailable");
+    }
+
+    /** Red de seguridad: todo error inesperado sale como problem+json, se registra y no revela detalles. */
+    @ExceptionHandler(Exception.class)
+    ProblemDetail handleUnexpected(Exception ex) {
+        log.error("Unexpected error", ex);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
+    }
+
+    private static String sqlState(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql) {
+                return sql.getSQLState();
+            }
+        }
+        return null;
     }
 }

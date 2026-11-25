@@ -109,6 +109,16 @@ class StopApiTest extends AbstractApiTest {
     }
 
     @Test
+    void aNulCharacterIsABadRequestNotAConflict() throws Exception {
+        // Pasa la validacion de Bean Validation pero PostgreSQL no puede guardar el byte 0 en un texto
+        // (SQLSTATE 22021): es un dato invalido del cliente, no un conflicto con otros datos.
+        mvc.perform(post("/api/stops").contentType(MediaType.APPLICATION_JSON).content(
+                        WITHOUT_WINDOW.replace("Calle Real 5, Getafe", "Calle\\u0000Real")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("The request contains a value the database cannot store"));
+    }
+
+    @Test
     void updatesAndDeletesOneStop() throws Exception {
         String body = mvc.perform(post("/api/stops").contentType(MediaType.APPLICATION_JSON).content(WITH_WINDOW))
                 .andReturn().getResponse().getContentAsString();
