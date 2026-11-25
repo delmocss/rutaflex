@@ -6,28 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
-/** Postgres + PostGIS reales (nunca H2): Flyway aplica las migraciones y las restricciones se cumplen. */
-@SpringBootTest
-@Testcontainers
-class DatabaseSchemaTest {
-
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer<?> POSTGIS = new PostgreSQLContainer<>(
-            DockerImageName.parse("postgis/postgis:16-3.5").asCompatibleSubstituteFor("postgres"));
-
-    @Autowired
-    JdbcTemplate jdbc;
+/** Flyway aplica las migraciones y el propio esquema impide datos incoherentes. */
+class DatabaseSchemaTest extends AbstractApiTest {
 
     @Test
     void flywayCreatesTheSchemaWithPostgis() {
