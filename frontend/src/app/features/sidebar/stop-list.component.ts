@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  effect,
+  inject,
+  input,
+  output,
+} from '@angular/core';
 import { windowLabel } from '../../core/domain';
 import { Stop } from '../../core/models';
 
@@ -111,6 +119,21 @@ export class StopListComponent {
   readonly stops = input<readonly Stop[]>([]);
   readonly selectedId = input<string | null>(null);
   readonly selected = output<string>();
+
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  constructor() {
+    // Al elegir una parada desde el mapa, la lista se desplaza hasta ella.
+    effect(() => {
+      if (this.selectedId()) {
+        queueMicrotask(() =>
+          this.host.nativeElement
+            .querySelector('button.selected')
+            ?.scrollIntoView({ block: 'nearest' }),
+        );
+      }
+    });
+  }
 
   protected label(stop: Stop): string | null {
     return windowLabel(stop);

@@ -22,7 +22,9 @@
       Almacén
       <select (change)="onWarehouse($event)" [value]="store.warehouse()?.id">
         @for (warehouse of store.warehouses(); track warehouse.id) {
-          <option [value]="warehouse.id">{{ warehouse.name }}</option>
+          <option [value]="warehouse.id" [selected]="warehouse.id === store.warehouse()?.id">
+            {{ warehouse.name }}
+          </option>
         }
       </select>
     </label>
@@ -34,6 +36,12 @@
     {{ store.loading() ? 'Cargando…' : 'Recargar' }}
   </button>
 </header>
+
+<p class="sr-only" aria-live="polite">
+  @if (store.selectedStop(); as stop) {
+    Parada seleccionada: {{ stop.address }}, {{ stop.parcels }} bultos
+  }
+</p>
 
 <main class="layout">
   <aside class="panel" aria-label="Panel de datos">

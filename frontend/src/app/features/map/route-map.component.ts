@@ -8,6 +8,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import * as L from 'leaflet';
@@ -25,7 +26,12 @@ const DEFAULT_CENTER: L.LatLngExpression = [40.25, -3.7];
   selector: 'app-route-map',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div #host class="map" role="application" aria-label="Mapa de paradas de reparto"></div>
+    <div
+      #host
+      class="map"
+      role="region"
+      aria-label="Mapa de paradas de reparto (los mismos datos están en la lista de paradas)"
+    ></div>
     <div class="legend" aria-hidden="true">
       <span><i class="dot teal"></i> Parada flexible</span>
       <span><i class="dot amber"></i> Con franja horaria</span>
@@ -94,6 +100,8 @@ export class RouteMapComponent implements OnDestroy {
   private readonly markers = new Map<string, L.CircleMarker>();
   private selectedMarker?: L.CircleMarker;
   private bounds?: L.LatLngBounds;
+  /** El usuario ha movido o ampliado el mapa: no se le reencuadra por un cambio de tamano. */
+  private userAdjusted = false;
 
   constructor() {
     afterNextRender(() => {
@@ -114,9 +122,16 @@ export class RouteMapComponent implements OnDestroy {
       const map = this.map;
       this.resizeObserver = new ResizeObserver(() => {
         map.invalidateSize({ animate: false });
-        this.fit();
+        if (!this.userAdjusted) {
+          this.fit();
+        }
       });
       this.resizeObserver.observe(this.host().nativeElement);
+
+      const container = this.host().nativeElement;
+      for (const type of ['pointerdown', 'wheel', 'keydown']) {
+        container.addEventListener(type, () => (this.userAdjusted = true), { passive: true });
+      }
 
       this.ready.set(true);
     });
@@ -127,6 +142,8 @@ export class RouteMapComponent implements OnDestroy {
         return;
       }
       this.draw(this.warehouse(), this.stops());
+      // draw() rehace todos los marcadores: se vuelve a resaltar la parada elegida (sin depender de ella aqui).
+      untracked(() => this.highlight(this.selectedStopId()));
     });
 
     // Resalta la parada elegida.
@@ -147,6 +164,7 @@ export class RouteMapComponent implements OnDestroy {
     this.layer.clearLayers();
     this.markers.clear();
     this.selectedMarker = undefined;
+    this.userAdjusted = false;
 
     const points: L.LatLngTuple[] = [];
 
@@ -198,6 +216,7 @@ export class RouteMapComponent implements OnDestroy {
 
   private highlight(id: string | null): void {
     this.selectedMarker?.setStyle({ weight: 1.5, color: '#ffffff' });
+    this.selectedMarker?.closeTooltip();
     this.selectedMarker = undefined;
 
     const marker = id ? this.markers.get(id) : undefined;

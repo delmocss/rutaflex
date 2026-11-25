@@ -27,11 +27,41 @@ describe('describeError', () => {
     ]);
   });
 
-  it('errores de validacion como mapa campo -> mensaje', () => {
+  it('errores de validacion como mapa campo -> mensaje, traducidos', () => {
     const problem = describeError(
       http(400, { detail: 'Validation failed', errors: { name: 'must not be blank' } }),
     );
-    expect(problem.details).toEqual(['name: must not be blank']);
+    expect(problem.message).toBe('Hay datos no válidos.');
+    expect(problem.details).toEqual(['name: no puede estar vacío']);
+  });
+
+  it('un elemento que no es texto no se muestra como [object Object]', () => {
+    const problem = describeError(http(400, { detail: 'x', errors: [{ field: 'a' }] }));
+    expect(problem.details).toEqual(['{"field":"a"}']);
+  });
+
+  it('el aviso de truncado de la API se traduce', () => {
+    const problem = describeError(http(400, { detail: 'x', errors: ['... and 20 more'] }));
+    expect(problem.details).toEqual(['… y 20 más']);
+  });
+
+  it('un 502/504 o un 500 sin cuerpo de la API (proxy de desarrollo) es "no se puede conectar"', () => {
+    for (const status of [502, 504]) {
+      expect(describeError(http(status, 'Bad gateway')).message).toContain('No se puede conectar');
+    }
+    expect(describeError(http(500, 'Error occurred while trying to proxy')).message).toContain(
+      'No se puede conectar',
+    );
+  });
+
+  it('un 503 de la API (base de datos caida) se explica como temporal', () => {
+    const problem = describeError(http(503, { detail: 'The service is temporarily unavailable' }));
+    expect(problem.message).toContain('temporalmente');
+  });
+
+  it('un 500 de la API (con detail) es un fallo del servicio, no de conexion', () => {
+    const problem = describeError(http(500, { detail: 'Internal server error' }));
+    expect(problem.message).toContain('La API ha fallado');
   });
 
   it('un fichero grande se explica en espanol', () => {

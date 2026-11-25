@@ -7,6 +7,9 @@ export interface ApiProblem {
   details: string[];
 }
 
+const UNREACHABLE =
+  'No se puede conectar con la API. Comprueba que route-api está en marcha (puerto 8080).';
+
 /** Mensajes conocidos de la API (en ingles, fijos) y su version en espanol. Lo no reconocido se muestra tal cual. */
 const MESSAGES: [RegExp, string][] = [
   [/^The CSV is not valid, nothing was imported$/, 'El CSV no es válido: no se ha importado nada.'],
@@ -24,6 +27,7 @@ const MESSAGES: [RegExp, string][] = [
     'La cabecera no es válida: los nombres de columna deben ser únicos.',
   ],
   [/^Validation failed$/, 'Hay datos no válidos.'],
+  [/^\.\.\. and (\d+) more$/, '… y $1 más'],
   [
     /^A resource with the same unique values already exists$/,
     'Ya existe un registro con esos mismos valores únicos.',
@@ -65,6 +69,11 @@ export function translateApiText(text: string): string {
   return translateWith(MESSAGES, text);
 }
 
+/** Un valor cualquiera como texto, sin caer en "[object Object]". */
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
 /**
  * Traduce un error HTTP a algo mostrable. La API responde application/problem+json con `detail` y,
  * segun el caso, `errors` (lista de lineas del CSV, o mapa campo -> mensaje).
@@ -74,22 +83,33 @@ export function describeError(error: unknown): ApiProblem {
     return { message: 'Ha ocurrido un error inesperado.', details: [] };
   }
   if (error.status === 0) {
-    return {
-      message:
-        'No se puede conectar con la API. Comprueba que route-api está en marcha (puerto 8080).',
-      details: [],
-    };
+    return { message: UNREACHABLE, details: [] };
   }
 
   const body = error.error as { detail?: unknown; errors?: unknown } | null;
   const details = Array.isArray(body?.errors)
-    ? body.errors.map((item) => translateApiText(String(item)))
+    ? body.errors.map((item) => translateApiText(text(item)))
     : body?.errors && typeof body.errors === 'object'
       ? Object.entries(body.errors as Record<string, unknown>).map(
-          ([field, text]) => `${field}: ${String(text)}`,
+          ([field, reason]) => `${field}: ${translateWith(LINE_REASONS, text(reason))}`,
         )
       : [];
 
+  // 502/504: el proxy de desarrollo no llega a la API. Un 500 sin cuerpo problem+json tambien es del
+  // proxy (la API siempre responde con `detail`).
+  const proxyFailure =
+    error.status === 502 ||
+    error.status === 504 ||
+    (error.status === 500 && typeof body?.detail !== 'string');
+  if (proxyFailure) {
+    return { message: UNREACHABLE, details: [] };
+  }
+  if (error.status === 503) {
+    return {
+      message: 'El servicio no está disponible temporalmente. Inténtalo de nuevo.',
+      details: [],
+    };
+  }
   if (error.status === 413) {
     return { message: 'El fichero supera el límite de 1 MB.', details };
   }
