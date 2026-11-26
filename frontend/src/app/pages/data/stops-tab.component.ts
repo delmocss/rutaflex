@@ -1,9 +1,16 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { describeError } from '../../core/api-error';
 import { ApiService } from '../../core/api.service';
-import { dayOptionLabel, formatTime, windowLabel } from '../../core/domain';
+import { dayOptionLabel, formatTime, todayLocal, windowLabel } from '../../core/domain';
 import { toLocation, toNumber } from '../../core/forms';
 import { Stop } from '../../core/models';
 import { PlanStore } from '../../core/plan.store';
@@ -63,10 +70,18 @@ import { ImportPanelComponent } from '../../features/sidebar/import-panel.compon
                           No
                         </button>
                       } @else {
-                        <button type="button" class="btn-link" (click)="edit(stop)">Editar</button>
+                        <button
+                          type="button"
+                          class="btn-link"
+                          [disabled]="busy()"
+                          (click)="edit(stop)"
+                        >
+                          Editar
+                        </button>
                         <button
                           type="button"
                           class="btn-link danger"
+                          [disabled]="busy()"
                           (click)="confirming.set(stop.id)"
                         >
                           Eliminar
@@ -178,6 +193,18 @@ export class StopsTabComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
 
+  constructor() {
+    // El día del formulario sigue al día que se está viendo (también tras una recarga), salvo al editar una parada.
+    effect(() => {
+      const date = this.store.selectedDate();
+      untracked(() => {
+        if (date && !this.editingId()) {
+          this.form.date = date;
+        }
+      });
+    });
+  }
+
   protected onDay(event: Event): void {
     const date = (event.target as HTMLSelectElement).value;
     void this.store.selectDate(date);
@@ -271,7 +298,7 @@ export class StopsTabComponent {
 
   private emptyForm() {
     return {
-      date: this.store.selectedDate() ?? new Date().toISOString().slice(0, 10),
+      date: this.store.selectedDate() ?? todayLocal(),
       address: '',
       lat: '',
       lon: '',

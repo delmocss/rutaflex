@@ -155,6 +155,35 @@ describe('PlanStore', () => {
     });
   });
 
+  describe('load con almacen preferido', () => {
+    it('elige el almacen indicado en vez de conservar el anterior (p. ej. tras crear uno nuevo)', async () => {
+      const loading = store.load();
+      await answerLoad({ warehouses: [warehouse, second] });
+      await loading;
+      expect(store.warehouse()?.id).toBe('w1');
+
+      const reload = store.load(undefined, 'w2');
+      (await request(get('/api/warehouses'))).flush([warehouse, second]);
+      (await request(get('/api/stops/dates'))).flush(days);
+      (await request(get('/api/warehouses/w2/vehicles'))).flush(vehicles);
+      (await request(stopsOf('2026-12-15'))).flush([stop('a')]);
+      await reload;
+
+      expect(store.warehouse()?.id).toBe('w2');
+    });
+
+    it('un almacen preferido que no existe cae al primero', async () => {
+      const reload = store.load(undefined, 'no-existe');
+      (await request(get('/api/warehouses'))).flush([warehouse]);
+      (await request(get('/api/stops/dates'))).flush(days);
+      (await request(get('/api/warehouses/w1/vehicles'))).flush(vehicles);
+      (await request(stopsOf('2026-12-15'))).flush([stop('a')]);
+      await reload;
+
+      expect(store.warehouse()?.id).toBe('w1');
+    });
+  });
+
   describe('selectDate', () => {
     it('vacia las paradas al momento (la etiqueta nunca muestra datos de otro dia) y las rellena al llegar', async () => {
       await loaded();

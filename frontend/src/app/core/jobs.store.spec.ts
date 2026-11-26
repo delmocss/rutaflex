@@ -248,6 +248,94 @@ describe('JobsStore', () => {
     expect(http.match(() => true)).toEqual([]);
   });
 
+  it('un fallo puntual al consultar no abandona el seguimiento: reintenta y termina', async () => {
+    const requesting = store.request('2026-12-14');
+    (await request(post('/api/optimizations'))).flush(job('j1', 'QUEUED'));
+    await requesting;
+
+    (await request(get('/api/optimizations/j1'))).flush('boom', {
+      status: 502,
+      statusText: 'Bad Gateway',
+    });
+    (await request(get('/api/optimizations/j1'))).flush(job('j1', 'RUNNING'));
+    await vi.waitFor(() => expect(store.current()?.status).toBe('RUNNING'));
+    expect(store.error()).toBeNull();
+
+    (await request(get('/api/optimizations/j1'))).flush(job('j1', 'COMPLETED', { routes: [] }));
+    await vi.waitFor(() => expect(store.current()?.status).toBe('COMPLETED'));
+    (await request(get('/api/optimizations'))).flush([]);
+  });
+
+  it('tras varios fallos seguidos se rinde: deja el error y el trabajo activo, y open() lo retoma', async () => {
+    const requesting = store.request('2026-12-14');
+    (await request(post('/api/optimizations'))).flush(job('j1', 'QUEUED'));
+    await requesting;
+
+    for (let i = 0; i < 4; i++) {
+      (await request(get('/api/optimizations/j1'))).error(new ProgressEvent('error'), {
+        status: 0,
+      });
+    }
+    await vi.waitFor(() => expect(store.error()).not.toBeNull());
+    expect(store.error()?.message).toContain('No se puede conectar');
+    expect(store.active()).toBe(true);
+
+    // Reintentar: open() consulta de nuevo y vuelve a seguirlo.
+    const resuming = store.open('j1');
+    (await request(get('/api/optimizations/j1'))).flush(job('j1', 'RUNNING'));
+    await resuming;
+    expect(store.error()).toBeNull();
+    (await request(get('/api/optimizations/j1'))).flush(job('j1', 'COMPLETED', { routes: [] }));
+    await vi.waitFor(() => expect(store.current()?.status).toBe('COMPLETED'));
+    (await request(get('/api/optimizations'))).flush([]);
+  });
+
+  it('loading no se queda activo si la carga queda desplazada por stop() o por una peticion', async () => {
+    const loading = store.openLatestFor('2026-12-14');
+    const list = await request(get('/api/optimizations'));
+    expect(store.loading()).toBe(true);
+
+    store.stop();
+    expect(store.loading()).toBe(false);
+    list.flush([]);
+    await loading;
+    expect(store.loading()).toBe(false);
+
+    const again = store.openLatestFor('2026-12-14');
+    const secondList = await request(get('/api/optimizations'));
+    const requesting = store.request('2026-12-14');
+    expect(store.loading()).toBe(false);
+    secondList.flush([]);
+    await again;
+    (await request(post('/api/optimizations'))).flush(job('j9', 'COMPLETED'));
+    await requesting;
+    expect(store.loading()).toBe(false);
+  });
+
+  it('openLatestFor con almacen elige el mas reciente de ESE almacen', async () => {
+    const opening = store.openLatestFor('2026-12-14', 'w2');
+    (await request(get('/api/optimizations'))).flush([
+      job('de-w1', 'COMPLETED', { warehouseId: 'w1' }),
+      job('de-w2', 'COMPLETED', { warehouseId: 'w2' }),
+    ]);
+    (await request(get('/api/optimizations/de-w2'))).flush(
+      job('de-w2', 'COMPLETED', { warehouseId: 'w2', routes: [] }),
+    );
+    await opening;
+
+    expect(store.current()?.id).toBe('de-w2');
+  });
+
+  it('openLatestFor con almacen sin trabajos suyos no muestra el de otro almacen', async () => {
+    const opening = store.openLatestFor('2026-12-14', 'w3');
+    (await request(get('/api/optimizations'))).flush([
+      job('de-w1', 'COMPLETED', { warehouseId: 'w1' }),
+    ]);
+    await opening;
+
+    expect(store.current()).toBeNull();
+  });
+
   it('stop() cancela el seguimiento y vacia el trabajo actual', async () => {
     const requesting = store.request('2026-12-14');
     (await request(post('/api/optimizations'))).flush(job('j1', 'QUEUED'));

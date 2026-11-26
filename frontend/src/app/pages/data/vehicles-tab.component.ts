@@ -46,10 +46,18 @@ const EMPTY = { name: '', capacity: '60', shiftStart: '08:00', shiftEnd: '15:00'
                         No
                       </button>
                     } @else {
-                      <button type="button" class="btn-link" (click)="edit(vehicle)">Editar</button>
+                      <button
+                        type="button"
+                        class="btn-link"
+                        [disabled]="busy()"
+                        (click)="edit(vehicle)"
+                      >
+                        Editar
+                      </button>
                       <button
                         type="button"
                         class="btn-link danger"
+                        [disabled]="busy()"
                         (click)="confirming.set(vehicle.id)"
                       >
                         Eliminar

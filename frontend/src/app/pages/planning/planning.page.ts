@@ -61,7 +61,10 @@ export class PlanningPage implements OnDestroy {
   /** El trabajo mostrado es de este día y completado. */
   private readonly completed = computed(() => {
     const job = this.jobs.current();
-    return job && job.status === 'COMPLETED' && job.deliveryDate === this.store.selectedDate()
+    return job &&
+      job.status === 'COMPLETED' &&
+      job.deliveryDate === this.store.selectedDate() &&
+      job.warehouseId === this.store.warehouse()?.id
       ? job
       : null;
   });
@@ -92,13 +95,14 @@ export class PlanningPage implements OnDestroy {
   });
 
   constructor() {
-    // Al cambiar de día se muestra la última optimización de ese día (o ninguna).
+    // Al cambiar de día o de almacén se muestra la última optimización de ese día y almacén (o ninguna).
     effect(() => {
       const date = this.store.selectedDate();
+      const warehouseId = this.store.warehouse()?.id;
       untracked(() => {
         this.activeRoute.set(null);
         if (date) {
-          void this.jobs.openLatestFor(date);
+          void this.jobs.openLatestFor(date, warehouseId);
         } else {
           this.jobs.stop();
         }
@@ -115,6 +119,14 @@ export class PlanningPage implements OnDestroy {
     if (date) {
       this.activeRoute.set(null);
       void this.jobs.request(date, this.store.warehouse()?.id);
+    }
+  }
+
+  /** Retoma el seguimiento de un trabajo si se perdió la conexión mientras se calculaba. */
+  protected resume(): void {
+    const job = this.jobs.current();
+    if (job) {
+      void this.jobs.open(job.id);
     }
   }
 

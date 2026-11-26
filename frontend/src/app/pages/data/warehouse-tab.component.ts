@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   signal,
@@ -89,13 +90,17 @@ export class WarehouseTabComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly saved = signal(false);
+  private readonly selectedId = computed(() => this.store.warehouse()?.id ?? null);
 
   constructor() {
     // Mientras no se haya pulsado "Nuevo almacén", el formulario edita el almacén elegido.
+    // El formulario edita el almacén elegido. Solo se rellena cuando cambia el almacén (su id), no cada vez
+    // que el almacén se recarga: una recarga no debe pisar lo que el usuario está escribiendo.
     effect(() => {
-      const warehouse = this.store.warehouse();
+      const id = this.selectedId();
       untracked(() => {
-        if (warehouse) {
+        const warehouse = this.store.warehouse();
+        if (warehouse && warehouse.id === id) {
           this.editingId.set(warehouse.id);
           Object.assign(this.form, {
             name: warehouse.name,
@@ -132,6 +137,10 @@ export class WarehouseTabComponent {
       } else {
         const created = await firstValueFrom(this.api.createWarehouse(body));
         this.editingId.set(created.id);
+        // El almacén nuevo pasa a ser el elegido; si no, la recarga mantendría el anterior y el formulario volvería a él.
+        await this.store.load(undefined, created.id);
+        this.saved.set(true);
+        return;
       }
       await this.store.load();
       this.saved.set(true);

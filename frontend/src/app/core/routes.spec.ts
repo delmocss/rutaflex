@@ -7,6 +7,7 @@ import {
   isStale,
   routeColor,
   savedKm,
+  todayLocal,
   savedPercent,
 } from './domain';
 import { toLocation, toNumber } from './forms';
@@ -182,5 +183,17 @@ describe('formularios', () => {
     expect(toLocation('', '0')).toBe('La latitud debe ser un número entre −90 y 90.');
     expect(toLocation('0', '181')).toBe('La longitud debe ser un número entre −180 y 180.');
     expect(toLocation('90', '-180')).toEqual({ lat: 90, lon: -180 });
+  });
+});
+
+describe('todayLocal', () => {
+  it('usa la fecha local, no la UTC: a las 00:30 de Espana sigue siendo hoy', () => {
+    // 30 de noviembre, 00:30 hora local (en UTC aun seria el dia 29 por la noche segun la zona).
+    expect(todayLocal(new Date(2026, 10, 30, 0, 30))).toBe('2026-11-30');
+    expect(todayLocal(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
+  });
+
+  it('rellena con ceros mes y dia', () => {
+    expect(todayLocal(new Date(2027, 2, 4, 12, 0))).toBe('2027-03-04');
   });
 });

@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   OnDestroy,
+  DestroyRef,
   OnInit,
   computed,
   effect,
@@ -40,6 +41,8 @@ import { RouteMapComponent } from '../../features/map/route-map.component';
 export class ResultsPage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly plan = inject(PlanStore);
+  private readonly destroyed = inject(DestroyRef);
+  private alive = true;
   protected readonly jobs = inject(JobsStore);
 
   protected readonly statusLabel = STATUS_LABEL;
@@ -84,10 +87,11 @@ export class ResultsPage implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    this.destroyed.onDestroy(() => (this.alive = false));
     await this.jobs.refreshList();
-    // Abre el más reciente para que la pantalla no empiece vacía.
+    // Abre el más reciente para que la pantalla no empiece vacía (si el usuario sigue aquí).
     const first = this.jobs.jobs()[0];
-    if (first && !this.jobs.current()) {
+    if (this.alive && first && !this.jobs.current()) {
       await this.jobs.open(first.id);
     }
   }

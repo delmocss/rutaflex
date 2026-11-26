@@ -249,11 +249,6 @@ export class RouteMapComponent implements OnDestroy {
   }
 
   private drawRoutes(routes: readonly MapRoute[], points: L.LatLngTuple[]): void {
-    const windowIds = new Set(
-      this.stops()
-        .filter((stop) => hasWindow(stop))
-        .map((stop) => stop.id),
-    );
     for (const route of routes) {
       const path: L.LatLngTuple[] = [
         [route.depot.lat, route.depot.lon],
@@ -270,8 +265,8 @@ export class RouteMapComponent implements OnDestroy {
         const position: L.LatLngTuple = [stop.location.lat, stop.location.lon];
         const marker = L.circleMarker(position, {
           radius: 10,
-          color: windowIds.has(stop.id) ? INK : '#ffffff',
-          weight: windowIds.has(stop.id) ? 3 : 1.5,
+          color: stop.window ? INK : '#ffffff',
+          weight: stop.window ? 3 : 1.5,
           fillColor: route.color,
           fillOpacity: 1,
         });
@@ -310,7 +305,10 @@ export class RouteMapComponent implements OnDestroy {
     if (this.selectedMarker && this.selectedBorder) {
       this.selectedMarker.setStyle(this.selectedBorder);
     }
-    this.selectedMarker?.closeTooltip();
+    // En modo rutas el tooltip es la etiqueta permanente con el numero de orden: no se cierra.
+    if (this.routes().length === 0) {
+      this.selectedMarker?.closeTooltip();
+    }
     this.selectedMarker?.closePopup();
     this.selectedMarker = undefined;
 

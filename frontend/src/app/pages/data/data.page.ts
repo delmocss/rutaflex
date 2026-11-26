@@ -20,21 +20,24 @@ type Tab = 'warehouse' | 'vehicles' | 'stops';
         </p>
       </header>
 
-      <div class="tabs" role="tablist" aria-label="Datos">
+      <div class="tabs" role="tablist" aria-label="Datos" (keydown)="onKey($event)">
         @for (item of tabs; track item.id) {
           <button
             type="button"
             role="tab"
+            [id]="'tab-' + item.id"
             [attr.aria-selected]="tab() === item.id"
+            [attr.aria-controls]="'panel-' + item.id"
+            [attr.tabindex]="tab() === item.id ? 0 : -1"
             [class.active]="tab() === item.id"
-            (click)="tab.set(item.id)"
+            (click)="select(item.id)"
           >
             {{ item.label }}
           </button>
         }
       </div>
 
-      <section role="tabpanel">
+      <section role="tabpanel" [id]="'panel-' + tab()" [attr.aria-labelledby]="'tab-' + tab()">
         @switch (tab()) {
           @case ('warehouse') {
             <app-warehouse-tab />
@@ -105,4 +108,36 @@ export class DataPage {
     { id: 'vehicles', label: 'Furgonetas' },
     { id: 'warehouse', label: 'Almacén' },
   ];
+
+  protected select(id: Tab, focus = false): void {
+    this.tab.set(id);
+    if (focus) {
+      // El foco sigue a la pestaña elegida con el teclado (patrón ARIA de pestañas).
+      queueMicrotask(() => document.getElementById('tab-' + id)?.focus());
+    }
+  }
+
+  /** Flechas izquierda/derecha, Inicio y Fin cambian de pestaña, como en el patrón ARIA. */
+  protected onKey(event: KeyboardEvent): void {
+    const index = this.tabs.findIndex((item) => item.id === this.tab());
+    let next = -1;
+    switch (event.key) {
+      case 'ArrowRight':
+        next = (index + 1) % this.tabs.length;
+        break;
+      case 'ArrowLeft':
+        next = (index - 1 + this.tabs.length) % this.tabs.length;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = this.tabs.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    this.select(this.tabs[next].id, true);
+  }
 }

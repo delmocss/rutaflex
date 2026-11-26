@@ -203,3 +203,9 @@ const dateTime = new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyl
 export function formatDateTime(iso: string | null | undefined): string {
   return iso ? dateTime.format(new Date(iso)) : '—';
 }
+
+/** La fecha de hoy en la zona horaria local, "AAAA-MM-DD". (toISOString da la fecha UTC: de madrugada en Espana seria ayer.) */
+export function todayLocal(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}

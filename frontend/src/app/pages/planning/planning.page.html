@@ -82,7 +82,12 @@
       }
 
       @if (jobs.error(); as error) {
-        <div class="alert" role="alert">{{ error.message }}</div>
+        <div class="alert" role="alert">
+          {{ error.message }}
+          @if (jobs.active()) {
+            <button type="button" class="btn btn-sm" (click)="resume()">Reintentar</button>
+          }
+        </div>
       }
 
       @if (jobs.current(); as job) {
