@@ -12,6 +12,7 @@ import com.rutaflex.events.OptimizationRequested.Stop;
 import com.rutaflex.events.OptimizationRequested.Vehicle;
 import com.rutaflex.events.OptimizationRequested.Warehouse;
 import com.rutaflex.optimizer.solver.Assumptions;
+import ai.timefold.solver.core.config.solver.EnvironmentMode;
 import com.rutaflex.optimizer.solver.RouteSolver;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -41,7 +42,7 @@ class RouteOptimizerTest {
     @BeforeAll
     static void load() throws IOException {
         sampleStops = readSampleStops();
-        optimizer = new RouteOptimizer(new RouteSolver(Duration.ofSeconds(12), Duration.ofSeconds(4), 42L),
+        optimizer = new RouteOptimizer(new RouteSolver(Duration.ofSeconds(20), Duration.ofSeconds(6), 42L),
                 Assumptions.DEFAULT);
     }
 
@@ -80,7 +81,8 @@ class RouteOptimizerTest {
                 }
                 previous = stop.estimatedArrival();
             }
-            assertThat(previous).as("last stop of " + van.name()).isBefore(van.shiftEnd());
+            assertThat(independentReturn(route, stopsById, van)).as("return of " + van.name())
+                    .isLessThanOrEqualTo(van.shiftEnd().toSecondOfDay());
             // Km de la ruta recalculados aquí, sin usar el código bajo prueba.
             double km = independentKm(route, stopsById);
             assertThat(route.distanceKm()).as("km of " + van.name()).isCloseTo(km, org.assertj.core.data.Offset.offset(0.011));
@@ -119,6 +121,70 @@ class RouteOptimizerTest {
         OptimizationRequested request = request(sampleStops.subList(0, 5), fleet());
 
         assertThat(quickOptimizer().optimize(request).jobId()).isEqualTo(request.jobId());
+    }
+
+    @Test
+    void theSolverKeepsItsIncrementalScoreConsistent() {
+        // FULL_ASSERT recalcula la puntuación completa tras cada movimiento y falla si difiere de la incremental:
+        // detecta variables sombra mal declaradas o restricciones que leen datos que el solver no vigila.
+        RouteOptimizer checked = new RouteOptimizer(
+                new RouteSolver(Duration.ofSeconds(5), Duration.ofSeconds(2), 7L, EnvironmentMode.FULL_ASSERT),
+                Assumptions.DEFAULT);
+
+        OptimizationCompleted result = checked.optimize(request(sampleStops.subList(0, 15), fleet()));
+
+        assertThat(result.routes().stream().mapToInt(r -> r.stops().size()).sum()).isEqualTo(15);
+    }
+
+    @Test
+    void theBaselineNeverBlocksAFeasibleProblem() {
+        // Orden 4, 4, 6, 6 con dos furgonetas de 10: cargando en orden la última no cabe, pero 4+6 y 4+6 sí.
+        List<Vehicle> vans = List.of(
+                new Vehicle(UUID.randomUUID(), "A", 10, LocalTime.of(8, 0), LocalTime.of(15, 0)),
+                new Vehicle(UUID.randomUUID(), "B", 10, LocalTime.of(8, 0), LocalTime.of(15, 0)));
+        List<Stop> stops = List.of(
+                new Stop(UUID.randomUUID(), "uno", new GeoPoint(40.21, -3.65), 4, null, null),
+                new Stop(UUID.randomUUID(), "dos", new GeoPoint(40.22, -3.66), 4, null, null),
+                new Stop(UUID.randomUUID(), "tres", new GeoPoint(40.23, -3.67), 6, null, null),
+                new Stop(UUID.randomUUID(), "cuatro", new GeoPoint(40.24, -3.68), 6, null, null));
+
+        OptimizationCompleted result = quickOptimizer().optimize(request(stops, vans));
+
+        assertThat(result.routes().stream().mapToInt(r -> r.stops().size()).sum()).isEqualTo(4);
+        assertThat(result.baselineKm()).isPositive();
+    }
+
+    // ---- entradas inválidas ----
+
+    @Test
+    void invalidInputsAreRejectedWithAReasonInsteadOfCrashing() {
+        GeoPoint where = new GeoPoint(40.21, -3.66);
+        Stop ok = new Stop(UUID.randomUUID(), "ok", where, 1, null, null);
+        Vehicle van = new Vehicle(UUID.randomUUID(), "V", 60, LocalTime.of(8, 0), LocalTime.of(15, 0));
+
+        assertRejected(request(List.of(new Stop(UUID.randomUUID(), "neg", where, -5, null, null)), List.of(van)),
+                "at least one parcel");
+        assertRejected(request(List.of(new Stop(UUID.randomUUID(), "cero", where, 0, null, null)), List.of(van)),
+                "at least one parcel");
+        assertRejected(request(List.of(new Stop(UUID.randomUUID(), "mitad", where, 1, LocalTime.of(9, 0), null)),
+                List.of(van)), "both ends");
+        assertRejected(request(List.of(new Stop(UUID.randomUUID(), "reves", where, 1, LocalTime.of(10, 0),
+                LocalTime.of(9, 0))), List.of(van)), "ends before it starts");
+        assertRejected(request(List.of(ok, ok), List.of(van)), "unique");
+        assertRejected(request(List.of(ok), List.of(van, van)), "unique");
+        assertRejected(request(List.of(ok), List.of(new Vehicle(UUID.randomUUID(), "cero", 0, LocalTime.of(8, 0),
+                LocalTime.of(15, 0)))), "positive capacity");
+        assertRejected(request(List.of(ok), List.of(new Vehicle(UUID.randomUUID(), "noche", 60, LocalTime.of(22, 0),
+                LocalTime.of(2, 0)))), "ends after it starts");
+        assertRejected(request(List.of(new Stop(UUID.randomUUID(), "sin sitio", null, 1, null, null)), List.of(van)),
+                "no location");
+        assertRejected(new OptimizationRequested(UUID.randomUUID(), LocalDate.of(2026, 12, 14), null, List.of(van),
+                List.of(ok)), "warehouse");
+    }
+
+    private static void assertRejected(OptimizationRequested request, String reason) {
+        assertThatThrownBy(() -> quickOptimizer().optimize(request))
+                .isInstanceOf(OptimizationException.class).hasMessageContaining(reason);
     }
 
     // ---- problemas que no se pueden resolver ----
@@ -207,6 +273,32 @@ class RouteOptimizerTest {
         }
         meters += haversine(lat, lon, DEPOT.lat(), DEPOT.lon()) * 1.3;
         return meters / 1000.0;
+    }
+
+    /**
+     * Hora (segundos) a la que la furgoneta vuelve al almacén, recalculada paso a paso: viaje, espera a que
+     * abra la franja, servicio y vuelta. Además comprueba que la hora informada de cada parada cuadra con la cadena.
+     */
+    private static int independentReturn(VehicleRoute route, Map<UUID, Stop> stops, Vehicle van) {
+        double clock = van.shiftStart().toSecondOfDay();
+        double lat = DEPOT.lat();
+        double lon = DEPOT.lon();
+        for (RouteStop stop : route.stops()) {
+            Stop data = stops.get(stop.stopId());
+            clock += haversine(lat, lon, data.location().lat(), data.location().lon()) * 1.3 / (30.0 / 3.6);
+            if (data.windowStart() != null) {
+                assertThat(clock).as(data.address() + " must arrive by the window end")
+                        .isLessThanOrEqualTo(data.windowEnd().toSecondOfDay() + 1);
+                clock = Math.max(clock, data.windowStart().toSecondOfDay());
+            }
+            assertThat((double) stop.estimatedArrival().toSecondOfDay()).as("reported time of " + data.address())
+                    .isBetween(clock - 3, clock + 3);
+            clock += 120 + 30 * data.parcels();
+            lat = data.location().lat();
+            lon = data.location().lon();
+        }
+        clock += haversine(lat, lon, DEPOT.lat(), DEPOT.lon()) * 1.3 / (30.0 / 3.6);
+        return (int) Math.ceil(clock);
     }
 
     private static double haversine(double lat1, double lon1, double lat2, double lon2) {

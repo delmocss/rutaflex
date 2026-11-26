@@ -118,16 +118,16 @@ Reparte las paradas entre las furgonetas y ordena cada ruta con [Timefold Solver
 
 Si el problema no tiene solución (más bultos que capacidad, una franja imposible, un turno demasiado corto) se rechaza con un mensaje que explica el motivo.
 
-**Supuestos del modelo.** No hay red viaria: la distancia es la de la línea recta multiplicada por 1,3 (rodeo urbano típico) y la velocidad media es de 30 km/h; cada parada tarda 2 min más 30 s por bulto. Son estimaciones, no rutas reales por calle. Se aplican igual a la solución y a la línea base, así que la comparación es justa aunque las cifras absolutas no sean exactas.
+**Supuestos del modelo.** No hay red viaria: la distancia es la de la línea recta multiplicada por 1,3 (rodeo urbano típico) y la velocidad media es de 30 km/h; cada parada tarda 2 min más 30 s por bulto. Son estimaciones, no rutas reales por calle. Se aplican igual a la solución y a la línea base (mismas distancias), pero la línea base es más simple que la solución —no mira franjas ni jornada—, así que la comparación mide distancia, no viabilidad.
 
-**Medición con el dataset de 80 paradas** (4 furgonetas de 60 bultos, 12 s de cálculo, semilla fija):
+**Medición con el dataset de 80 paradas** (4 furgonetas de 60 bultos, hasta 20 s de cálculo, semilla fija):
 
 | | km |
 |---|---|
 | Línea base: paradas en el orden de llegada, cada una en la primera furgoneta con hueco | 793,8 |
-| Optimizado | 127,3 |
+| Optimizado | 122,5 |
 
-Una reducción del 84 %, pero **hay que leerla con cuidado**: las paradas del CSV llegan mezcladas entre tres municipios, así que la línea base es deliberadamente ingenua (cada furgoneta salta de un pueblo a otro) y además no respeta las franjas horarias. Un despachante real ordenaría al menos por zonas. Esa cifra es el techo del ahorro, no una promesa; la Fase 6 añade una referencia más exigente (vecino más cercano por zona) para dar un número defendible. La búsqueda tiene un límite de tiempo, así que el resultado exacto varía un poco entre ejecuciones; los tests solo exigen umbrales holgados.
+Una reducción del 85 %, pero **hay que leerla con cuidado**: las paradas del CSV llegan mezcladas entre tres municipios, así que la línea base es deliberadamente ingenua (cada furgoneta salta de un pueblo a otro) y además no respeta las franjas horarias. Un despachante real ordenaría al menos por zonas. Esa cifra es el techo del ahorro, no una promesa; la Fase 6 añade una referencia más exigente (vecino más cercano por zona) para dar un número defendible. La búsqueda tiene un límite de tiempo, así que el resultado exacto varía un poco entre ejecuciones; los tests solo exigen umbrales holgados.
 
 ## Tests
 
@@ -135,7 +135,7 @@ Una reducción del 84 %, pero **hay que leerla con cuidado**: las paradas del CS
 
 - `common-events`: los eventos viajan como JSON y vuelven iguales.
 - `route-api`: PostgreSQL + PostGIS **reales** con Testcontainers (nunca H2), con un único contenedor compartido: migraciones de Flyway, geografía en metros, restricciones del esquema, los CRUD de almacenes, furgonetas y paradas, la importación CSV (todo o nada, errores por fila, `replace` atómico) y el dataset de ejemplo.
-- `optimizer-service`: cada restricción de Timefold aislada con `ConstraintVerifier` y números calculables a mano (17 tests), y la resolución del dataset de 80 paradas verificada con un cálculo independiente de km, capacidad, franjas y jornada; los problemas imposibles se rechazan con su motivo.
+- `optimizer-service`: cada restricción de Timefold aislada con `ConstraintVerifier` y números calculables a mano (17 tests), la resolución del dataset de 80 paradas verificada con un cálculo independiente de km, capacidad, franjas y vuelta al almacén, una ejecución con `FULL_ASSERT` (comprueba que la puntuación incremental del solver coincide con la recalculada), la validación de entradas incorrectas y los problemas imposibles, que se rechazan con su motivo. Además, `OptimizerApplicationTest` comprueba que el servicio arranca y responde en `/actuator/health`.
 - `frontend`: 43 tests unitarios con Vitest (lógica de dominio, traducción de errores, estado y cliente HTTP) más `npm run build` y el formato con Prettier.
 
 El CI de GitHub Actions ejecuta `mvn verify` y los comandos del frontend.

@@ -11,7 +11,10 @@ import com.rutaflex.optimizer.solver.RouteVehicle;
 import com.rutaflex.optimizer.solver.Visit;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Convierte el evento de petición en un problema de Timefold, lo resuelve y devuelve el evento de resultado
@@ -61,8 +64,8 @@ public class RouteOptimizer {
 
     /**
      * Reparto sin optimizar: las paradas en el orden en que llegaron, cada una a la primera furgoneta en la
-     * que quepa. Es la línea base contra la que se mide el ahorro. No tiene en cuenta franjas horarias, así
-     * que es una referencia de distancia, no necesariamente un reparto viable.
+     * que quepa; si ya no cabe en ninguna (el empaquetado en orden puede fallar aunque exista solución), va a
+     * la más vacía. Es una referencia de distancia: no mira franjas horarias ni jornada, y nunca impide optimizar.
      */
     double baselineKm(RoutePlan problem) {
         List<RouteVehicle> vans = problem.getVehicles();
@@ -72,18 +75,22 @@ public class RouteOptimizer {
             loads.add(new ArrayList<>());
         }
         for (Visit visit : problem.getVisits()) {
-            boolean placed = false;
-            for (int i = 0; i < vans.size() && !placed; i++) {
+            int target = -1;
+            for (int i = 0; i < vans.size() && target < 0; i++) {
                 if (used[i] + visit.getParcels() <= vans.get(i).getCapacityParcels()) {
-                    loads.get(i).add(visit);
-                    used[i] += visit.getParcels();
-                    placed = true;
+                    target = i;
                 }
             }
-            if (!placed) {
-                throw new OptimizationException("Stop '" + visit.getAddress()
-                        + "' does not fit in any vehicle when loading in arrival order");
+            if (target < 0) {
+                target = 0;
+                for (int i = 1; i < vans.size(); i++) {
+                    if (vans.get(i).getCapacityParcels() - used[i] > vans.get(target).getCapacityParcels() - used[target]) {
+                        target = i;
+                    }
+                }
             }
+            loads.get(target).add(visit);
+            used[target] += visit.getParcels();
         }
         double km = 0;
         for (int i = 0; i < vans.size(); i++) {
@@ -120,11 +127,46 @@ public class RouteOptimizer {
     }
 
     private static void validate(OptimizationRequested request) {
+        if (request.warehouse() == null || request.warehouse().location() == null) {
+            throw new OptimizationException("The warehouse and its location are required");
+        }
         if (request.vehicles() == null || request.vehicles().isEmpty()) {
             throw new OptimizationException("There are no vehicles to plan with");
         }
         if (request.stops() == null || request.stops().isEmpty()) {
             throw new OptimizationException("There are no stops to plan");
+        }
+        Set<UUID> ids = new HashSet<>();
+        for (var v : request.vehicles()) {
+            if (v == null || v.id() == null || !ids.add(v.id())) {
+                throw new OptimizationException("Vehicle ids are required and must be unique");
+            }
+            if (v.capacityParcels() <= 0) {
+                throw new OptimizationException("Vehicle '" + v.name() + "' must have a positive capacity");
+            }
+            if (v.shiftStart() == null || v.shiftEnd() == null || !v.shiftEnd().isAfter(v.shiftStart())) {
+                throw new OptimizationException("Vehicle '" + v.name() + "' needs a shift that ends after it starts "
+                        + "(shifts crossing midnight are not supported)");
+            }
+        }
+        ids.clear();
+        for (var stop : request.stops()) {
+            if (stop == null || stop.id() == null || !ids.add(stop.id())) {
+                throw new OptimizationException("Stop ids are required and must be unique");
+            }
+            if (stop.location() == null) {
+                throw new OptimizationException("Stop '" + stop.address() + "' has no location");
+            }
+            if (stop.parcels() <= 0) {
+                throw new OptimizationException("Stop '" + stop.address() + "' must have at least one parcel");
+            }
+            if ((stop.windowStart() == null) != (stop.windowEnd() == null)) {
+                throw new OptimizationException("Stop '" + stop.address()
+                        + "' must have both ends of its time window or none");
+            }
+            if (stop.windowStart() != null && stop.windowStart().isAfter(stop.windowEnd())) {
+                throw new OptimizationException("Stop '" + stop.address() + "' has a time window that ends before it starts");
+            }
         }
         int capacity = request.vehicles().stream().mapToInt(OptimizationRequested.Vehicle::capacityParcels).sum();
         int parcels = request.stops().stream().mapToInt(OptimizationRequested.Stop::parcels).sum();
