@@ -105,7 +105,7 @@ function today(): string {
     code {
       padding: 0 4px;
       border-radius: 4px;
-      background: #e2e8f0;
+      background: var(--sunken);
       font-size: 12px;
     }
     button {
@@ -119,7 +119,7 @@ function today(): string {
       cursor: pointer;
     }
     button:disabled {
-      background: #94a3b8;
+      background: var(--line-strong);
       cursor: not-allowed;
     }
     button:focus-visible,
@@ -129,7 +129,7 @@ function today(): string {
     }
     .ok {
       margin: 0;
-      color: #166534;
+      color: #335c3c;
     }
     .error {
       margin: 0;
@@ -140,8 +140,8 @@ function today(): string {
       margin: 0;
       padding: 6px 8px;
       border-radius: 6px;
-      background: #fef3c7;
-      color: #92400e;
+      background: var(--accent-soft);
+      color: #7b5718;
     }
     ul {
       max-height: 160px;

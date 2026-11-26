@@ -48,3 +48,61 @@ export interface ImportResult {
   imported: number;
   replaced: number;
 }
+
+// ---- optimizaciones ----
+
+export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+export interface RouteStop {
+  stopId: string;
+  /** Empieza en 1. */
+  sequence: number;
+  /** Hora estimada de inicio de la atencion, "HH:mm:ss" (si llega antes de que abra la franja, espera). */
+  estimatedArrival: string;
+}
+
+export interface VehicleRoute {
+  vehicleId: string;
+  distanceKm: number;
+  stops: RouteStop[];
+}
+
+/** Un trabajo de optimizacion. Los listados no traen `routes` ni `computeMillis`. */
+export interface OptimizationJob {
+  id: string;
+  warehouseId: string;
+  deliveryDate: string;
+  status: JobStatus;
+  failureReason?: string;
+  totalKm?: number;
+  baselineKm?: number;
+  requestedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  computeMillis?: number;
+  routes?: VehicleRoute[];
+}
+
+// ---- cuerpos de escritura ----
+
+export interface WarehouseInput {
+  name: string;
+  address: string;
+  location: GeoPoint;
+}
+
+export interface VehicleInput {
+  name: string;
+  capacityParcels: number;
+  shiftStart: string;
+  shiftEnd: string;
+}
+
+export interface StopInput {
+  deliveryDate: string;
+  address: string;
+  location: GeoPoint;
+  parcels: number;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+}

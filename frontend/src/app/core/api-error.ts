@@ -32,7 +32,69 @@ const MESSAGES: [RegExp, string][] = [
     /^A resource with the same unique values already exists$/,
     'Ya existe un registro con esos mismos valores únicos.',
   ],
+  // ---- optimizaciones ----
+  [
+    /^An optimization for this warehouse and day is already in progress$/,
+    'Ya hay un cálculo en curso para este día. Espera a que termine.',
+  ],
+  [/^There are no stops for (.+)$/, 'No hay paradas para el día $1.'],
+  [
+    /^The warehouse has no vehicles to plan with$/,
+    'El almacén no tiene furgonetas con las que planificar.',
+  ],
+  [/^There is no warehouse yet$/, 'Todavía no hay ningún almacén.'],
+  [
+    /^warehouseId is required when there is more than one warehouse$/,
+    'Hay varios almacenes: elige uno.',
+  ],
+  [
+    /^The optimization could not be queued, try again shortly$/,
+    'No se pudo poner en cola la optimización. Inténtalo de nuevo en unos segundos.',
+  ],
 ];
+
+/**
+ * Motivos de fallo de un trabajo (los escribe el optimizador o la API, en ingles) en espanol. Se muestran al
+ * usuario en la ficha del trabajo; lo no reconocido se deja tal cual.
+ */
+const FAILURE_REASONS: [RegExp, string][] = [
+  [
+    /^No feasible plan found.*$/,
+    'No existe un reparto que cumpla todas las restricciones: revisa la capacidad de las furgonetas, las franjas horarias y la jornada.',
+  ],
+  [
+    /^There are (\d+) parcels but the vehicles only carry (\d+)$/,
+    'Hay $1 bultos pero las furgonetas solo pueden llevar $2.',
+  ],
+  [
+    /^Stop '(.+)' has (\d+) parcels, more than any single vehicle carries \((\d+)\)$/,
+    'La parada «$1» tiene $2 bultos, más de lo que cabe en cualquier furgoneta ($3).',
+  ],
+  [/^There are no vehicles to plan with$/, 'No hay furgonetas con las que planificar.'],
+  [/^There are no stops to plan$/, 'No hay paradas que planificar.'],
+  [
+    /^The job did not finish within (.+): its result never arrived$/,
+    'El cálculo no terminó en $1: el resultado nunca llegó. Puedes volver a lanzarlo.',
+  ],
+  [
+    /^The job could not be queued.*$/,
+    'No se pudo poner en cola el cálculo. Puedes volver a lanzarlo.',
+  ],
+  [
+    /^The optimization request could not be read by the optimizer$/,
+    'El optimizador no pudo leer la petición.',
+  ],
+  [
+    /^The optimizer could not process the request after (\d+) attempts.*$/,
+    'El optimizador no pudo procesar la petición tras $1 intentos.',
+  ],
+  [/^The optimization failed$/, 'La optimización falló.'],
+];
+
+/** El motivo de fallo de un trabajo, en espanol. */
+export function translateFailureReason(reason: string | null | undefined): string {
+  return reason ? translateWith(FAILURE_REASONS, reason) : '';
+}
 
 /** Parte final de un error por linea del CSV ("line 3: <columna> <aqui>"). */
 const LINE_REASONS: [RegExp, string][] = [

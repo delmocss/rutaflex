@@ -10,24 +10,36 @@ Optimización de rutas de reparto para una pequeña empresa de paquetería: reci
 |---|---|---|
 | 1 | Esqueleto: Maven multi-módulo, `docker compose`, Flyway, CI | ✅ |
 | 2 | Almacén, furgonetas y paradas (PostGIS), importación CSV, dataset de ejemplo | ✅ |
-| 2b | UI de solo lectura (Angular + Leaflet): almacén, furgonetas y paradas en el mapa, e importación CSV | ✅ |
+| 2b | UI (Angular + Leaflet): portada, planificación con rutas sobre el mapa, historial de resultados y gestión de datos (sin login todavía) | ✅ |
 | 3 | Optimizador con Timefold (resuelve solo, sin Kafka): restricciones y comparación con la línea base | ✅ |
 | 4 | Kafka: trabajo asíncrono con estado (202 + id), consumidores idempotentes, test de extremo a extremo | ✅ |
 | 5 | Opcionales de Kafka: outbox, dead letter con reintentos por topic, métricas Micrometer | ⏳ |
 | 6 | Restricciones reales y medición de km ahorrados | ⏳ |
-| 7 | Angular + Leaflet y JWT con dos roles | ⏳ |
+| 7 | JWT con dos roles (COORDINADOR / REPARTIDOR) en el backend y en la UI | ⏳ |
 | 8-9 | Despliegue, documentación y vídeo | ⏳ |
 
 ## Interfaz
 
-![Mapa de paradas de reparto en Madrid sur](docs/images/ui-map.png)
+Angular 21 + Leaflet (`frontend/`), con cuatro vistas y una paleta cálida y apagada:
 
-Angular 21 + Leaflet (`frontend/`): elige el día de reparto, ve el resumen (paradas, bultos frente a la capacidad de la flota), la flota y las paradas en la lista y en el mapa (ámbar = con franja horaria), e importa un CSV desde el panel. Los errores de la API se muestran en español, línea a línea. Detalles en [`frontend/README.md`](frontend/README.md).
+| Vista | Qué hace |
+|---|---|
+| **Inicio** | Portada: qué es RutaFlex, cómo funciona, qué restricciones respeta, la medición (con su advertencia) y el stack |
+| **Planificación** | Elige un día y pulsa **Optimizar**: se ve el avance (en cola → calculando → completado) y las rutas aparecen sobre el mapa, cada furgoneta de un color con el orden de sus paradas; al pulsar una ruta se resalta |
+| **Resultados** | Historial de optimizaciones y, de cada una, los km optimizados y sin optimizar, el ahorro, el mapa y una tabla por furgoneta con la hora estimada y la franja de cada parada |
+| **Datos** | Alta, edición y borrado de paradas (por día), furgonetas y almacén, más la importación CSV |
+
+![Inicio](docs/images/ui-inicio.png)
+![Planificación: rutas por furgoneta sobre el mapa](docs/images/ui-planificacion.png)
+![Resultados: comparación de km y detalle por furgoneta](docs/images/ui-resultados.png)
+
+Cuida los detalles de uso: los mensajes de la API se muestran en español (también el motivo de un cálculo fallido); si cambias las paradas de un día después de optimizar, avisa de que el resultado ya no es vigente en vez de dibujar rutas que no cuadran; los trazados son líneas rectas entre paradas (no hay red viaria) y así se indica. Detalles en [`frontend/README.md`](frontend/README.md).
 
 ```bash
-docker compose up -d postgis
+docker compose up -d
 RUTAFLEX_SAMPLE_DATA_ENABLED=true mvn -pl route-api spring-boot:run   # API con los datos de ejemplo
-cd frontend && npm install && npm start                               # http://localhost:4200
+mvn -pl optimizer-service spring-boot:run                              # el optimizador (para poder pulsar «Optimizar»)
+cd frontend && npm install && npm start                                # http://localhost:4200
 ```
 
 ## Arquitectura
@@ -183,6 +195,6 @@ Una reducción del 85 %, pero **hay que leerla con cuidado**: las paradas del CS
 - `route-api` (trabajos): con PostGIS **y Kafka reales** — pedir una optimización (202, mensaje publicado con el problema completo y las paradas en su orden), conflictos y datos que faltan, el consumo de resultados con mensajes repetidos, tardíos, de trabajos desconocidos e ilegibles (comprobado por mutación: quitar la condición de estado de cualquier transición hace fallar los tests), el vigilante de trabajos atascados (programado de verdad, no llamado a mano) y el fallo al encolar incluso cuando tampoco se puede guardar el fallo.
 - `optimizer-service`: la lógica de atender una petición sin Kafka (inicio y resultado, duplicado ignorado, problema imposible, reintento sin recalcular, petición antigua), los caminos de fallo (petición ilegible con y sin trabajo identificable, un aviso que tampoco se puede publicar sin provocar bucles) y cada restricción de Timefold aislada con `ConstraintVerifier` y números calculables a mano (17 tests), la resolución del dataset de 80 paradas verificada con un cálculo independiente de km, capacidad, franjas y vuelta al almacén, una ejecución con `FULL_ASSERT` (comprueba que la puntuación incremental del solver coincide con la recalculada), la validación de entradas incorrectas y los problemas imposibles, que se rechazan con su motivo. Además, `OptimizerApplicationTest` comprueba que el servicio arranca y responde en `/actuator/health`.
 - `e2e-tests`: **PostGIS y Kafka reales y los dos jars ejecutables** (los que se desplegarían), cada uno en su proceso. Optimiza el día de 80 paradas de punta a punta y comprueba que cada parada aparece una vez, la capacidad y las franjas; que los problemas imposibles acaban `FAILED` con su motivo; que un mensaje duplicado no se recalcula (el optimizador publica un solo resultado); que la basura en el topic no bloquea los siguientes; que una petición ilegible de un trabajo conocido lo deja `FAILED`; y el 409 con un trabajo activo. Se ejecuta con failsafe en `mvn verify`.
-- `frontend`: 43 tests unitarios con Vitest (lógica de dominio, traducción de errores, estado y cliente HTTP) más `npm run build` y el formato con Prettier.
+- `frontend`: 95 tests unitarios con Vitest (lógica de dominio y de rutas, traducción de errores, formularios y los dos estados —datos y optimizaciones—, incluidas las respuestas que llegan fuera de orden) más `npm run build` y el formato con Prettier.
 
 El CI de GitHub Actions ejecuta `mvn verify` y los comandos del frontend.

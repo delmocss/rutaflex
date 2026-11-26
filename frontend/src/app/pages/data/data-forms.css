@@ -1,0 +1,153 @@
+:host {
+  display: block;
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+  padding: 20px;
+}
+
+h3 {
+  font-size: 17px;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.triple {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.table-card {
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th {
+  padding: 9px 14px;
+  background: var(--sunken);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+td {
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+}
+
+td.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+td.row-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+td.row-actions > * + * {
+  margin-left: 12px;
+}
+
+.empty {
+  padding: 18px 14px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+
+.layout .form {
+  max-width: none;
+  position: sticky;
+  top: calc(var(--nav-height) + 16px);
+}
+
+.scroll {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.toolbar .field {
+  min-width: 260px;
+}
+
+.confirm {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layout .form {
+    position: static;
+  }
+
+  .triple {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+.import {
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.import summary {
+  cursor: pointer;
+  color: var(--brand-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.import[open] summary {
+  margin-bottom: 12px;
+}
