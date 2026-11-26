@@ -11,7 +11,7 @@ Optimización de rutas de reparto para una pequeña empresa de paquetería: reci
 | 1 | Esqueleto: Maven multi-módulo, `docker compose`, Flyway, CI | ✅ |
 | 2 | Almacén, furgonetas y paradas (PostGIS), importación CSV, dataset de ejemplo | ✅ |
 | 2b | UI de solo lectura (Angular + Leaflet): almacén, furgonetas y paradas en el mapa, e importación CSV | ✅ |
-| 3 | Optimizador con Timefold y sus restricciones | ⏳ |
+| 3 | Optimizador con Timefold (resuelve solo, sin Kafka): restricciones y comparación con la línea base | ✅ |
 | 4-5 | Kafka: trabajo asíncrono, idempotencia, dead letter, test de extremo a extremo | ⏳ |
 | 6 | Restricciones reales y medición de km ahorrados | ⏳ |
 | 7 | Angular + Leaflet y JWT con dos roles | ⏳ |
@@ -105,14 +105,37 @@ RUTAFLEX_SAMPLE_DATA_ENABLED=true RUTAFLEX_SAMPLE_DATA_DELIVERY_DATE=2026-12-14 
 
 Crea un almacén, cuatro furgonetas (4 × 60 bultos) y las 80 paradas, todo en una transacción. Solo actúa si la base de datos está vacía y nunca borra nada.
 
+## Optimizador (`optimizer-service`)
+
+Reparte las paradas entre las furgonetas y ordena cada ruta con [Timefold Solver](https://timefold.ai). Es una librería de Java: `RouteOptimizer` recibe un `OptimizationRequested` y devuelve un `OptimizationCompleted`; la conexión con Kafka llega en la fase siguiente.
+
+| Restricción | Tipo | Qué hace |
+|---|---|---|
+| Capacidad | dura | Los bultos de una furgoneta no pueden superar su capacidad |
+| Franja horaria | dura | No se puede llegar a una parada después de que cierre su franja; llegar antes solo implica esperar |
+| Fin de jornada | dura | La furgoneta debe estar de vuelta en el almacén antes de que acabe su turno |
+| Distancia | blanda | Minimiza los metros totales, contando la salida del almacén y la vuelta |
+
+Si el problema no tiene solución (más bultos que capacidad, una franja imposible, un turno demasiado corto) se rechaza con un mensaje que explica el motivo.
+
+**Supuestos del modelo.** No hay red viaria: la distancia es la de la línea recta multiplicada por 1,3 (rodeo urbano típico) y la velocidad media es de 30 km/h; cada parada tarda 2 min más 30 s por bulto. Son estimaciones, no rutas reales por calle. Se aplican igual a la solución y a la línea base, así que la comparación es justa aunque las cifras absolutas no sean exactas.
+
+**Medición con el dataset de 80 paradas** (4 furgonetas de 60 bultos, 12 s de cálculo, semilla fija):
+
+| | km |
+|---|---|
+| Línea base: paradas en el orden de llegada, cada una en la primera furgoneta con hueco | 793,8 |
+| Optimizado | 127,3 |
+
+Una reducción del 84 %, pero **hay que leerla con cuidado**: las paradas del CSV llegan mezcladas entre tres municipios, así que la línea base es deliberadamente ingenua (cada furgoneta salta de un pueblo a otro) y además no respeta las franjas horarias. Un despachante real ordenaría al menos por zonas. Esa cifra es el techo del ahorro, no una promesa; la Fase 6 añade una referencia más exigente (vecino más cercano por zona) para dar un número defendible. La búsqueda tiene un límite de tiempo, así que el resultado exacto varía un poco entre ejecuciones; los tests solo exigen umbrales holgados.
+
 ## Tests
 
 `mvn verify` ejecuta, por módulo:
 
 - `common-events`: los eventos viajan como JSON y vuelven iguales.
 - `route-api`: PostgreSQL + PostGIS **reales** con Testcontainers (nunca H2), con un único contenedor compartido: migraciones de Flyway, geografía en metros, restricciones del esquema, los CRUD de almacenes, furgonetas y paradas, la importación CSV (todo o nada, errores por fila, `replace` atómico) y el dataset de ejemplo.
-- `optimizer-service`: arranca y responde en `/actuator/health`.
-
-- `frontend`: 31 tests unitarios con Vitest (lógica de dominio, traducción de errores, estado y cliente HTTP) más `npm run build` y el formato con Prettier.
+- `optimizer-service`: cada restricción de Timefold aislada con `ConstraintVerifier` y números calculables a mano (17 tests), y la resolución del dataset de 80 paradas verificada con un cálculo independiente de km, capacidad, franjas y jornada; los problemas imposibles se rechazan con su motivo.
+- `frontend`: 43 tests unitarios con Vitest (lógica de dominio, traducción de errores, estado y cliente HTTP) más `npm run build` y el formato con Prettier.
 
 El CI de GitHub Actions ejecuta `mvn verify` y los comandos del frontend.

@@ -1,0 +1,81 @@
+address,lat,lon,parcels,window_start,window_end
+"Calle del Carmen, 78, Pinto",40.242003,-3.713044,4,,
+"Calle Mayor, 34, Pinto",40.231268,-3.697881,2,,
+"Calle Real, 83, Valdemoro",40.198300,-3.666630,3,11:00,13:00
+"Calle Segovia, 28, Pinto",40.254331,-3.688875,3,,
+"Calle Mayor, 16, Valdemoro",40.187496,-3.665133,4,,
+"Calle de la Paz, 20, Getafe",40.292922,-3.741370,3,,
+"Calle de las Eras, 16, Getafe",40.318465,-3.737738,2,09:00,11:00
+"Calle Libertad, 33, Pinto",40.248445,-3.708364,1,12:00,14:00
+"Calle Libertad, 11, Pinto",40.237361,-3.687416,2,,
+"Calle de Cervantes, 7, Getafe",40.308677,-3.745881,3,10:00,12:00
+"Avenida de la Constitución, 43, Pinto",40.247940,-3.694920,2,,
+"Calle de la Paz, 5, Valdemoro",40.188032,-3.675744,1,,
+"Calle Zaragoza, 30, Getafe",40.314445,-3.755584,2,10:00,12:00
+"Calle de San Isidro, 67, Getafe",40.306894,-3.749692,1,,
+"Calle Libertad, 40, Valdemoro",40.198852,-3.685276,4,,
+"Avenida de España, 41, Valdemoro",40.193113,-3.673833,1,,
+"Calle de la Fuente, 68, Pinto",40.253096,-3.695386,1,,
+"Calle Libertad, 37, Pinto",40.242659,-3.682409,4,,
+"Calle Segovia, 60, Pinto",40.238859,-3.683180,3,,
+"Calle Hospital, 87, Valdemoro",40.198684,-3.664175,3,11:00,13:00
+"Avenida de Andalucía, 37, Pinto",40.242419,-3.717615,1,,
+"Calle del Sol, 39, Valdemoro",40.185105,-3.673248,5,,
+"Calle del Pinar, 26, Getafe",40.309713,-3.724559,2,,
+"Calle de Goya, 61, Pinto",40.246311,-3.699390,3,,
+"Calle Toledo, 70, Getafe",40.308026,-3.741513,5,,
+"Calle Hospital, 80, Getafe",40.295392,-3.722469,2,,
+"Calle de Cervantes, 64, Pinto",40.233754,-3.714101,1,09:00,11:00
+"Calle de Goya, 16, Getafe",40.296490,-3.727238,1,,
+"Calle de la Iglesia, 4, Getafe",40.314700,-3.732766,4,,
+"Calle de San Isidro, 82, Valdemoro",40.178036,-3.669924,1,,
+"Calle de las Eras, 88, Valdemoro",40.186842,-3.662953,3,,
+"Calle del Pinar, 70, Pinto",40.236292,-3.713727,2,12:00,14:00
+"Calle Real, 26, Getafe",40.317965,-3.726372,1,,
+"Calle de San Isidro, 57, Valdemoro",40.203167,-3.668753,5,10:00,12:00
+"Calle de San Isidro, 21, Pinto",40.234127,-3.686312,4,,
+"Avenida de la Constitución, 9, Getafe",40.316054,-3.741017,3,,
+"Calle de Cervantes, 45, Valdemoro",40.180834,-3.675428,3,10:00,12:00
+"Calle de Goya, 33, Getafe",40.306500,-3.754901,1,,
+"Calle Toledo, 89, Valdemoro",40.186182,-3.675691,4,,
+"Calle de los Olivos, 16, Getafe",40.307117,-3.744169,4,11:00,13:00
+"Calle del Pinar, 81, Getafe",40.315911,-3.723353,2,10:00,12:00
+"Calle de San Isidro, 10, Getafe",40.291632,-3.719411,1,09:00,11:00
+"Calle de Cervantes, 53, Valdemoro",40.202927,-3.677985,2,10:00,12:00
+"Calle de la Estación, 67, Pinto",40.240778,-3.682067,2,09:00,11:00
+"Calle Segovia, 86, Valdemoro",40.198899,-3.665841,5,10:00,12:00
+"Calle de los Olivos, 29, Pinto",40.233984,-3.689845,1,,
+"Avenida de Andalucía, 20, Valdemoro",40.196926,-3.666614,1,,
+"Paseo de la Alameda, 25, Valdemoro",40.194828,-3.672949,2,,
+"Calle de la Fuente, 78, Getafe",40.294421,-3.741039,6,,
+"Calle Hospital, 8, Getafe",40.289829,-3.722728,1,,
+"Avenida de la Constitución, 63, Getafe",40.292536,-3.719636,3,11:00,13:00
+"Calle de la Fuente, 88, Getafe",40.291055,-3.721934,1,,
+"Calle de las Eras, 49, Valdemoro",40.195129,-3.685198,5,10:00,12:00
+"Calle de los Olivos, 3, Getafe",40.301476,-3.742662,1,,
+"Calle de las Eras, 83, Valdemoro",40.200688,-3.670040,6,09:00,11:00
+"Calle Hospital, 50, Getafe",40.321806,-3.739428,1,,
+"Calle Zaragoza, 38, Pinto",40.231660,-3.697535,4,,
+"Calle de los Olivos, 79, Valdemoro",40.183994,-3.668542,1,,
+"Calle de la Paz, 42, Valdemoro",40.194685,-3.657346,3,,
+"Calle Libertad, 83, Pinto",40.246198,-3.716004,1,,
+"Calle Madrid, 4, Getafe",40.297094,-3.719493,2,,
+"Calle de la Estación, 31, Valdemoro",40.184720,-3.670766,2,,
+"Calle Hospital, 47, Pinto",40.235681,-3.711781,4,12:00,14:00
+"Calle del Pinar, 40, Getafe",40.294404,-3.731276,3,10:00,12:00
+"Calle de las Eras, 84, Valdemoro",40.188724,-3.676676,2,,
+"Calle de San Isidro, 90, Valdemoro",40.186722,-3.661888,3,11:00,13:00
+"Calle Libertad, 60, Getafe",40.321638,-3.740715,1,,
+"Avenida de España, 47, Pinto",40.233160,-3.707757,3,,
+"Calle Madrid, 63, Pinto",40.247823,-3.717211,1,,
+"Calle Segovia, 61, Valdemoro",40.181237,-3.663812,2,,
+"Avenida de España, 82, Pinto",40.234831,-3.691878,5,11:00,13:00
+"Calle de San Isidro, 48, Valdemoro",40.185912,-3.678621,5,,
+"Calle de la Iglesia, 14, Pinto",40.237067,-3.711519,2,,
+"Calle de la Fuente, 32, Getafe",40.301588,-3.707662,4,09:00,11:00
+"Calle del Carmen, 2, Pinto",40.244027,-3.717434,2,12:00,14:00
+"Avenida de Andalucía, 86, Getafe",40.305311,-3.706411,2,,
+"Avenida de Andalucía, 72, Valdemoro",40.203161,-3.673232,1,12:00,14:00
+"Calle Mayor, 42, Valdemoro",40.193410,-3.689119,3,,
+"Calle de la Iglesia, 8, Getafe",40.306319,-3.727963,2,10:00,12:00
+"Calle Libertad, 22, Valdemoro",40.198305,-3.665615,3,11:00,13:00
