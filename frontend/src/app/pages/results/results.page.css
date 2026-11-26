@@ -1,0 +1,283 @@
+:host {
+  display: block;
+  flex: 1;
+}
+
+.results {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+h1 {
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.list-head {
+  margin-bottom: 12px;
+}
+
+.list ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.list button:hover {
+  background: var(--sunken);
+}
+
+.list button.selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.row2 {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.empty {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  font-size: 14px;
+}
+
+.empty p {
+  color: var(--muted);
+}
+
+.detail {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chip.big {
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 0;
+}
+
+.kpis .card {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+}
+
+.kpis dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kpis dd {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpis dd.muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.kpis .highlight {
+  background: var(--brand-soft);
+  border-color: #d4d9b8;
+}
+
+.kpis .highlight dd {
+  color: var(--brand-ink);
+}
+
+.sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.caveat {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: #7b5718;
+  font-size: 13px;
+}
+
+.stale {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: #7b5718;
+  font-size: 14px;
+}
+
+.map-box {
+  height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.vehicles {
+  display: grid;
+  gap: 12px;
+}
+
+.vehicle {
+  overflow: hidden;
+}
+
+.vehicle.active {
+  border-color: var(--brand);
+}
+
+.vehicle-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vehicle-head:hover {
+  background: var(--sunken);
+}
+
+.vehicle-head .meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th {
+  padding: 8px 14px;
+  background: var(--sunken);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+td {
+  padding: 7px 14px;
+  border-top: 1px solid var(--line);
+}
+
+td.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+}
+
+@media (max-width: 900px) {
+  .results {
+    grid-template-columns: 1fr;
+  }
+
+  .kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .map-box {
+    height: 320px;
+  }
+
+  .vehicle-head {
+    flex-wrap: wrap;
+  }
+
+  .vehicle-head .meta {
+    margin-left: 22px;
+    width: 100%;
+  }
+
+  table {
+    display: block;
+    overflow-x: auto;
+  }
+}

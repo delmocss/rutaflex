@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { describeError, translateApiText } from './api-error';
+import { describeError, translateApiText, translateFailureReason } from './api-error';
 
 const http = (status: number, error: unknown) => new HttpErrorResponse({ status, error });
 
@@ -109,5 +109,62 @@ describe('translateApiText', () => {
     expect(translateApiText('line 7: address size must be between 0 and 200')).toBe(
       'Línea 7 · address: size must be between 0 and 200',
     );
+  });
+});
+
+describe('mensajes de optimizaciones', () => {
+  it.each([
+    [
+      'An optimization for this warehouse and day is already in progress',
+      'Ya hay un cálculo en curso para este día. Espera a que termine.',
+    ],
+    ['There are no stops for 2026-12-14', 'No hay paradas para el día 2026-12-14.'],
+    [
+      'The warehouse has no vehicles to plan with',
+      'El almacén no tiene furgonetas con las que planificar.',
+    ],
+    ['There is no warehouse yet', 'Todavía no hay ningún almacén.'],
+  ])('%s', (english, spanish) => expect(translateApiText(english)).toBe(spanish));
+
+  it('un 409 al pedir una optimizacion sale en espanol', () => {
+    const problem = describeError(
+      http(409, { detail: 'An optimization for this warehouse and day is already in progress' }),
+    );
+    expect(problem.message).toContain('Ya hay un cálculo en curso');
+  });
+});
+
+describe('translateFailureReason', () => {
+  it.each([
+    [
+      'No feasible plan found (hard score -12): capacity, time windows or the end of the shift cannot be met',
+      'No existe un reparto',
+    ],
+    [
+      'There are 300 parcels but the vehicles only carry 240',
+      'Hay 300 bultos pero las furgonetas solo pueden llevar 240.',
+    ],
+    [
+      "Stop 'Calle Mayor 1' has 100 parcels, more than any single vehicle carries (60)",
+      'La parada «Calle Mayor 1» tiene 100 bultos, más de lo que cabe en cualquier furgoneta (60).',
+    ],
+    [
+      'The job did not finish within 10 minutes: its result never arrived',
+      'no terminó en 10 minutes',
+    ],
+    [
+      'The job could not be queued: the message could not be delivered to Kafka',
+      'No se pudo poner en cola',
+    ],
+    [
+      'The optimizer could not process the request after 3 attempts (IllegalStateException)',
+      'tras 3 intentos',
+    ],
+  ])('%s', (english, expected) => expect(translateFailureReason(english)).toContain(expected));
+
+  it('un motivo desconocido se deja tal cual y vacio da cadena vacia', () => {
+    expect(translateFailureReason('something new')).toBe('something new');
+    expect(translateFailureReason(undefined)).toBe('');
+    expect(translateFailureReason(null)).toBe('');
   });
 });

@@ -12,16 +12,21 @@ import {
   viewChild,
 } from '@angular/core';
 import * as L from 'leaflet';
-import { hasWindow, windowLabel } from '../../core/domain';
+import { MapRoute, hasWindow, windowLabel } from '../../core/domain';
 import { Stop, Warehouse } from '../../core/models';
 
-const TEAL = '#0e7490';
-const AMBER = '#d97706';
-const INK = '#0f172a';
+const OLIVE = '#5f6f3a';
+const OCHRE = '#b3822f';
+const INK = '#2a251d';
 
 /** Madrid sur: vista inicial hasta que haya datos. */
 const DEFAULT_CENTER: L.LatLngExpression = [40.25, -3.7];
 
+/**
+ * Mapa de paradas. Sin rutas, las paradas se colorean por tener franja horaria o no. Con rutas, cada parada
+ * toma el color de su furgoneta, lleva su numero de orden y se dibuja el trazado (en linea recta entre
+ * paradas: no hay red viaria, asi que es una aproximacion, no el recorrido por calles).
+ */
 @Component({
   selector: 'app-route-map',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,8 +38,15 @@ const DEFAULT_CENTER: L.LatLngExpression = [40.25, -3.7];
       aria-label="Mapa de paradas de reparto (los mismos datos están en la lista de paradas)"
     ></div>
     <div class="legend" aria-hidden="true">
-      <span><i class="dot teal"></i> Parada flexible</span>
-      <span><i class="dot amber"></i> Con franja horaria</span>
+      @if (routes().length === 0) {
+        <span><i class="dot olive"></i> Parada flexible</span>
+        <span><i class="dot ochre"></i> Con franja horaria</span>
+      } @else {
+        @for (route of routes(); track route.id) {
+          <span><i class="dot" [style.background]="route.color"></i> {{ route.name }}</span>
+        }
+        <span><i class="dot ring"></i> Con franja horaria</span>
+      }
       <span><i class="dot square"></i> Almacén</span>
     </div>
   `,
@@ -47,7 +59,7 @@ const DEFAULT_CENTER: L.LatLngExpression = [40.25, -3.7];
     .map {
       height: 100%;
       width: 100%;
-      background: #dbeafe;
+      background: #e8e4d8;
     }
     .legend {
       position: absolute;
@@ -59,10 +71,10 @@ const DEFAULT_CENTER: L.LatLngExpression = [40.25, -3.7];
       gap: 4px;
       padding: 8px 10px;
       border-radius: 8px;
-      background: rgb(255 255 255 / 92%);
-      box-shadow: 0 1px 4px rgb(15 23 42 / 25%);
+      background: rgb(255 253 249 / 94%);
+      box-shadow: 0 1px 4px rgb(42 37 29 / 25%);
       font-size: 12px;
-      color: #0f172a;
+      color: var(--ink);
     }
     .dot {
       display: inline-block;
@@ -71,23 +83,31 @@ const DEFAULT_CENTER: L.LatLngExpression = [40.25, -3.7];
       margin-right: 6px;
       border-radius: 50%;
       border: 1.5px solid #fff;
-      box-shadow: 0 0 0 1px rgb(15 23 42 / 30%);
+      box-shadow: 0 0 0 1px rgb(42 37 29 / 30%);
     }
-    .dot.teal {
-      background: #0e7490;
+    .dot.olive {
+      background: #5f6f3a;
     }
-    .dot.amber {
-      background: #d97706;
+    .dot.ochre {
+      background: #b3822f;
+    }
+    .dot.ring {
+      background: #fff;
+      border-color: #2a251d;
+      box-shadow: none;
     }
     .dot.square {
       border-radius: 2px;
-      background: #0f172a;
+      background: #2a251d;
     }
   `,
 })
 export class RouteMapComponent implements OnDestroy {
   readonly warehouse = input<Warehouse | null>(null);
   readonly stops = input<readonly Stop[]>([]);
+  readonly routes = input<readonly MapRoute[]>([]);
+  /** Ruta resaltada (id de furgoneta); las demas se atenuan. */
+  readonly activeRouteId = input<string | null>(null);
   readonly selectedStopId = input<string | null>(null);
   readonly stopSelected = output<string>();
 
@@ -98,7 +118,10 @@ export class RouteMapComponent implements OnDestroy {
   private resizeObserver?: ResizeObserver;
   private readonly layer = L.layerGroup();
   private readonly markers = new Map<string, L.CircleMarker>();
+  private readonly lines = new Map<string, L.Polyline>();
   private selectedMarker?: L.CircleMarker;
+  /** Borde que tenia la parada antes de resaltarla, para devolverselo (las de franja llevan borde oscuro). */
+  private selectedBorder?: { weight: number; color: string };
   private bounds?: L.LatLngBounds;
   /** El usuario ha movido o ampliado el mapa: no se le reencuadra por un cambio de tamano. */
   private userAdjusted = false;
@@ -136,22 +159,29 @@ export class RouteMapComponent implements OnDestroy {
       this.ready.set(true);
     });
 
-    // Redibuja cuando cambian los datos.
+    // Redibuja cuando cambian los datos o las rutas.
     effect(() => {
       if (!this.ready()) {
         return;
       }
-      this.draw(this.warehouse(), this.stops());
-      // draw() rehace todos los marcadores: se vuelve a resaltar la parada elegida (sin depender de ella aqui).
-      untracked(() => this.highlight(this.selectedStopId()));
+      this.draw(this.warehouse(), this.stops(), this.routes());
+      // draw() rehace todos los marcadores: se vuelve a resaltar lo elegido (sin depender de ello aqui).
+      untracked(() => {
+        this.emphasise(this.activeRouteId());
+        this.highlight(this.selectedStopId());
+      });
     });
 
-    // Resalta la parada elegida.
     effect(() => {
-      if (!this.ready()) {
-        return;
+      if (this.ready()) {
+        this.emphasise(this.activeRouteId());
       }
-      this.highlight(this.selectedStopId());
+    });
+
+    effect(() => {
+      if (this.ready()) {
+        this.highlight(this.selectedStopId());
+      }
     });
   }
 
@@ -160,23 +190,37 @@ export class RouteMapComponent implements OnDestroy {
     this.map?.remove();
   }
 
-  private draw(warehouse: Warehouse | null, stops: readonly Stop[]): void {
+  private draw(
+    warehouse: Warehouse | null,
+    stops: readonly Stop[],
+    routes: readonly MapRoute[],
+  ): void {
     this.layer.clearLayers();
     this.markers.clear();
+    this.lines.clear();
     this.selectedMarker = undefined;
     this.userAdjusted = false;
 
     const points: L.LatLngTuple[] = [];
 
-    for (const stop of stops) {
-      const position: L.LatLngTuple = [stop.location.lat, stop.location.lon];
-      points.push(position);
-
-      const marker = L.circleMarker(position, this.style(stop, false));
-      marker.bindTooltip(this.tooltip(stop), { direction: 'top', offset: [0, -4] });
-      marker.on('click', () => this.stopSelected.emit(stop.id));
-      marker.addTo(this.layer);
-      this.markers.set(stop.id, marker);
+    if (routes.length > 0) {
+      this.drawRoutes(routes, points);
+    } else {
+      for (const stop of stops) {
+        const position: L.LatLngTuple = [stop.location.lat, stop.location.lon];
+        points.push(position);
+        const marker = L.circleMarker(position, {
+          radius: 5 + Math.min(stop.parcels, 6) * 1.2,
+          color: '#ffffff',
+          weight: 1.5,
+          fillColor: hasWindow(stop) ? OCHRE : OLIVE,
+          fillOpacity: 0.9,
+        });
+        marker.bindTooltip(this.tooltip(stop), { direction: 'top', offset: [0, -4] });
+        marker.on('click', () => this.stopSelected.emit(stop.id));
+        marker.addTo(this.layer);
+        this.markers.set(stop.id, marker);
+      }
     }
 
     if (warehouse) {
@@ -194,10 +238,7 @@ export class RouteMapComponent implements OnDestroy {
       })
         .bindTooltip(
           `<strong>${this.escape(warehouse.name)}</strong><br>${this.escape(warehouse.address)}`,
-          {
-            direction: 'top',
-            offset: [0, -12],
-          },
+          { direction: 'top', offset: [0, -12] },
         )
         .addTo(this.layer);
     }
@@ -205,6 +246,52 @@ export class RouteMapComponent implements OnDestroy {
     this.bounds = points.length > 0 ? L.latLngBounds(points) : undefined;
     this.map?.invalidateSize({ animate: false });
     this.fit();
+  }
+
+  private drawRoutes(routes: readonly MapRoute[], points: L.LatLngTuple[]): void {
+    for (const route of routes) {
+      const path: L.LatLngTuple[] = [
+        [route.depot.lat, route.depot.lon],
+        ...route.stops.map((stop): L.LatLngTuple => [stop.location.lat, stop.location.lon]),
+        [route.depot.lat, route.depot.lon],
+      ];
+      const line = L.polyline(path, { color: route.color, weight: 4, opacity: 0.85 }).addTo(
+        this.layer,
+      );
+      this.lines.set(route.id, line);
+      points.push(...path);
+
+      for (const stop of route.stops) {
+        const position: L.LatLngTuple = [stop.location.lat, stop.location.lon];
+        const marker = L.circleMarker(position, {
+          radius: 10,
+          color: stop.window ? INK : '#ffffff',
+          weight: stop.window ? 3 : 1.5,
+          fillColor: route.color,
+          fillOpacity: 1,
+        });
+        marker.bindTooltip(String(stop.sequence), {
+          permanent: true,
+          direction: 'center',
+          className: 'seq-label',
+        });
+        marker.bindPopup(
+          `<strong>${this.escape(stop.address)}</strong><br>${this.escape(route.name)} · parada ${stop.sequence}` +
+            `<br>${stop.parcels} ${stop.parcels === 1 ? 'bulto' : 'bultos'} · llegada ${this.escape(stop.arrival)}`,
+        );
+        marker.on('click', () => this.stopSelected.emit(stop.id));
+        marker.addTo(this.layer);
+        this.markers.set(stop.id, marker);
+      }
+    }
+  }
+
+  /** Atenua las rutas que no son la elegida. Sin ruta elegida, todas se ven igual. */
+  private emphasise(activeId: string | null): void {
+    for (const [id, line] of this.lines) {
+      const dimmed = activeId !== null && id !== activeId;
+      line.setStyle({ opacity: dimmed ? 0.2 : 0.85, weight: !dimmed && activeId ? 6 : 4 });
+    }
   }
 
   /** Encuadra todos los puntos dibujados. */
@@ -215,31 +302,35 @@ export class RouteMapComponent implements OnDestroy {
   }
 
   private highlight(id: string | null): void {
-    this.selectedMarker?.setStyle({ weight: 1.5, color: '#ffffff' });
-    this.selectedMarker?.closeTooltip();
+    if (this.selectedMarker && this.selectedBorder) {
+      this.selectedMarker.setStyle(this.selectedBorder);
+    }
+    // En modo rutas el tooltip es la etiqueta permanente con el numero de orden: no se cierra.
+    if (this.routes().length === 0) {
+      this.selectedMarker?.closeTooltip();
+    }
+    this.selectedMarker?.closePopup();
     this.selectedMarker = undefined;
 
     const marker = id ? this.markers.get(id) : undefined;
     if (!marker || !this.map) {
       return;
     }
+    this.selectedBorder = {
+      weight: marker.options.weight ?? 1.5,
+      color: marker.options.color ?? '#ffffff',
+    };
     marker.setStyle({ weight: 4, color: INK });
     marker.bringToFront();
-    marker.openTooltip();
+    if (this.routes().length > 0) {
+      marker.openPopup();
+    } else {
+      marker.openTooltip();
+    }
     if (!this.map.getBounds().contains(marker.getLatLng())) {
       this.map.panTo(marker.getLatLng());
     }
     this.selectedMarker = marker;
-  }
-
-  private style(stop: Stop, selected: boolean): L.CircleMarkerOptions {
-    return {
-      radius: 5 + Math.min(stop.parcels, 6) * 1.2,
-      color: selected ? INK : '#ffffff',
-      weight: selected ? 4 : 1.5,
-      fillColor: hasWindow(stop) ? AMBER : TEAL,
-      fillOpacity: 0.9,
-    };
   }
 
   private tooltip(stop: Stop): string {

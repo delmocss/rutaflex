@@ -1,0 +1,186 @@
+<main class="results">
+  <aside class="list" aria-label="Optimizaciones anteriores">
+    <div class="list-head">
+      <h1>Resultados</h1>
+      <p class="hint">Cada vez que optimizas un día queda aquí.</p>
+    </div>
+
+    @if (jobs.jobs().length === 0) {
+      <div class="empty card">
+        <strong>Aún no hay optimizaciones</strong>
+        <p>Elige un día en <a routerLink="/planificacion">Planificación</a> y pulsa «Optimizar».</p>
+      </div>
+    } @else {
+      <ul>
+        @for (job of jobs.jobs(); track job.id) {
+          <li>
+            <button
+              type="button"
+              [class.selected]="jobs.current()?.id === job.id"
+              [attr.aria-current]="jobs.current()?.id === job.id"
+              (click)="open(job)"
+            >
+              <span class="row1">
+                <strong>{{ day(job.deliveryDate) }}</strong>
+                <span
+                  class="chip"
+                  [class.ok]="job.status === 'COMPLETED'"
+                  [class.danger]="job.status === 'FAILED'"
+                  [class.info]="job.status === 'RUNNING' || job.status === 'QUEUED'"
+                  >{{ statusLabel[job.status] }}</span
+                >
+              </span>
+              <span class="row2">
+                {{ when(job.requestedAt) }}
+                @if (job.status === 'COMPLETED') {
+                  · {{ km(job.totalKm) }} · −{{ savedPct(job) }} %
+                }
+              </span>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  </aside>
+
+  <section class="detail" aria-label="Detalle de la optimización">
+    @if (jobs.error(); as error) {
+      <div class="alert" role="alert">{{ error.message }}</div>
+    }
+
+    @if (jobs.current(); as job) {
+      <header class="detail-head">
+        <div>
+          <p class="eyebrow">Optimización</p>
+          <h2>{{ day(job.deliveryDate) }}</h2>
+          <p class="hint">Pedida el {{ when(job.requestedAt) }}</p>
+        </div>
+        <span
+          class="chip big"
+          [class.ok]="job.status === 'COMPLETED'"
+          [class.danger]="job.status === 'FAILED'"
+          [class.info]="job.status === 'RUNNING' || job.status === 'QUEUED'"
+          >{{ statusLabel[job.status] }}</span
+        >
+      </header>
+
+      @switch (job.status) {
+        @case ('FAILED') {
+          <div class="alert" role="alert">
+            <strong>No se pudo optimizar este día</strong>
+            <span>{{ failure(job.failureReason) }}</span>
+          </div>
+        }
+        @case ('COMPLETED') {
+          <dl class="kpis">
+            <div class="card">
+              <dt>Km optimizados</dt>
+              <dd>{{ km(job.totalKm) }}</dd>
+            </div>
+            <div class="card">
+              <dt>Km sin optimizar</dt>
+              <dd class="muted">{{ km(job.baselineKm) }}</dd>
+            </div>
+            <div class="card highlight">
+              <dt>Ahorro</dt>
+              <dd>{{ savedPct(job) }} %</dd>
+              <span class="sub">{{ km(saved(job)) }} menos</span>
+            </div>
+            <div class="card">
+              <dt>Furgonetas</dt>
+              <dd>{{ vehiclesUsed() }}</dd>
+              <span class="sub">calculado en {{ seconds(job.computeMillis) }}</span>
+            </div>
+          </dl>
+
+          <p class="caveat">
+            «Sin optimizar» es un reparto en orden de llegada, sin tener en cuenta franjas ni
+            jornada. Es un techo del ahorro, no una promesa: frente a una ruta ya razonable la
+            mejora será menor. Las distancias son estimadas (línea recta × 1,3), no recorridos
+            reales por calle.
+          </p>
+
+          @if (contextError()) {
+            <div class="alert" role="alert">
+              No se pudieron cargar los datos del día para dibujar las rutas.
+            </div>
+          } @else if (stale()) {
+            <p class="stale">
+              Las paradas de este día han cambiado desde este cálculo, así que sus rutas ya no
+              representan el reparto actual.
+              <a routerLink="/planificacion">Vuelve a optimizar</a>.
+            </p>
+          } @else {
+            <div class="map-box">
+              <app-route-map
+                [warehouse]="warehouse()"
+                [stops]="[]"
+                [routes]="routes()"
+                [activeRouteId]="activeRoute()"
+              />
+            </div>
+
+            <div class="vehicles">
+              @for (route of routes(); track route.id) {
+                <article class="card vehicle" [class.active]="activeRoute() === route.id">
+                  <button
+                    type="button"
+                    class="vehicle-head"
+                    (click)="toggleRoute(route.id)"
+                    [attr.aria-pressed]="activeRoute() === route.id"
+                  >
+                    <i class="swatch" [style.background]="route.color"></i>
+                    <strong>{{ route.name }}</strong>
+                    <span class="meta">
+                      {{ route.stops.length }} paradas · {{ route.parcels }}/{{ route.capacity }}
+                      bultos ·
+                      {{ km(route.km) }}
+                    </span>
+                  </button>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Dirección</th>
+                        <th scope="col">Llegada</th>
+                        <th scope="col">Bultos</th>
+                        <th scope="col">Franja</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (stop of route.stops; track stop.id) {
+                        <tr>
+                          <td class="num">{{ stop.sequence }}</td>
+                          <td>{{ stop.address }}</td>
+                          <td class="num">{{ stop.arrival }}</td>
+                          <td class="num">{{ stop.parcels }}</td>
+                          <td>
+                            @if (stop.window) {
+                              <span class="chip warn">{{ stop.window }}</span>
+                            } @else {
+                              <span class="hint">—</span>
+                            }
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </article>
+              }
+            </div>
+          }
+        }
+        @default {
+          <div class="progress" role="status">
+            <span class="spinner"></span>
+            <span>{{ statusLabel[job.status] }}… se actualizará sola cuando termine.</span>
+          </div>
+        }
+      }
+    } @else if (jobs.loading()) {
+      <div class="progress" role="status"><span class="spinner"></span> Cargando…</div>
+    } @else if (jobs.jobs().length > 0) {
+      <p class="hint">Elige una optimización de la lista.</p>
+    }
+  </section>
+</main>

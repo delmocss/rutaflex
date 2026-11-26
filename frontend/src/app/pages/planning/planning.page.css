@@ -1,0 +1,271 @@
+:host {
+  display: block;
+  flex: 1;
+  min-height: 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  height: calc(100dvh - var(--nav-height));
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.panel section {
+  display: grid;
+  gap: 10px;
+}
+
+h2 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.count {
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--sunken);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.stops {
+  min-height: 140px;
+}
+
+.stops-scroll {
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.import summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-ink);
+}
+
+.import[open] summary {
+  margin-bottom: 10px;
+}
+
+/* ---- tarjeta de optimización ---- */
+
+.optimise {
+  padding: 14px;
+}
+
+.optimise-head h2 {
+  margin-bottom: 2px;
+}
+
+.hint {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.note {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.note.warn {
+  background: var(--accent-soft);
+  color: #7b5718;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  font-size: 14px;
+}
+
+.progress .spinner {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-width: 3px;
+}
+
+.progress strong {
+  display: block;
+}
+
+.result {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.result div {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+}
+
+.result dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.result dd {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.result dd.muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.result .saving {
+  background: var(--brand-soft);
+}
+
+.result .saving dd {
+  color: var(--brand-ink);
+}
+
+/* ---- rutas ---- */
+
+.routes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.routes button {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  grid-template-areas: 'swatch name' '. meta';
+  gap: 0 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.routes button:hover {
+  background: var(--sunken);
+}
+
+.routes button.selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.swatch {
+  grid-area: swatch;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.routes .name {
+  grid-area: name;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.routes .meta {
+  grid-area: meta;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---- mapa ---- */
+
+.map-area {
+  position: relative;
+  min-width: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 600;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: rgb(246 242 234 / 88%);
+  text-align: center;
+  color: var(--ink);
+}
+
+.overlay.empty h2 {
+  font-size: 18px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+
+.overlay p {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.overlay pre {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #efe9dd;
+  font-size: 12px;
+  text-align: left;
+  overflow-x: auto;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 55vh auto;
+    height: auto;
+  }
+
+  .map-area {
+    order: -1;
+  }
+
+  .panel {
+    border-right: 0;
+    overflow: visible;
+  }
+}

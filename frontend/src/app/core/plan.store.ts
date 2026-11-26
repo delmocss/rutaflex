@@ -56,7 +56,7 @@ export class PlanStore {
    * Carga todo. Conserva el dia elegido (o `preferDate`) si existe; si no, el mas reciente.
    * Devuelve false si fallo o si otra operacion mas nueva la sustituyo.
    */
-  async load(preferDate?: string): Promise<boolean> {
+  async load(preferDate?: string, preferWarehouseId?: string): Promise<boolean> {
     const order = ++this.latest;
     this.pending.update((n) => n + 1);
     this.error.set(null);
@@ -66,7 +66,8 @@ export class PlanStore {
         firstValueFrom(this.api.stopDays()),
       ]);
       const current = this.warehouse();
-      const warehouse = warehouses.find((w) => w.id === current?.id) ?? warehouses[0] ?? null;
+      const wantedWarehouse = preferWarehouseId ?? current?.id;
+      const warehouse = warehouses.find((w) => w.id === wantedWarehouse) ?? warehouses[0] ?? null;
       const wanted = preferDate ?? this.selectedDate();
       const date = days.some((d) => d.date === wanted) ? wanted : (days.at(-1)?.date ?? null);
 

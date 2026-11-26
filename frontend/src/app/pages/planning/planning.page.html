@@ -1,0 +1,226 @@
+<p class="sr-only" aria-live="polite">
+  @if (store.selectedStop(); as stop) {
+    Parada seleccionada: {{ stop.address }}, {{ stop.parcels }} bultos
+  }
+</p>
+
+<main class="layout">
+  <aside class="panel" aria-label="Panel de planificación">
+    @if (store.error(); as error) {
+      <div class="alert" role="alert">
+        <strong>{{ error.message }}</strong>
+        @for (detail of error.details; track $index) {
+          <div>{{ detail }}</div>
+        }
+        <button type="button" class="btn btn-sm" (click)="store.load()">Reintentar</button>
+      </div>
+    }
+
+    <section>
+      @if (store.warehouses().length > 1) {
+        <label class="field">
+          Almacén
+          <select (change)="onWarehouse($event)" [value]="store.warehouse()?.id">
+            @for (warehouse of store.warehouses(); track warehouse.id) {
+              <option [value]="warehouse.id" [selected]="warehouse.id === store.warehouse()?.id">
+                {{ warehouse.name }}
+              </option>
+            }
+          </select>
+        </label>
+      }
+      <label class="field">
+        Día de reparto
+        <select
+          (change)="onDay($event)"
+          [value]="store.selectedDate()"
+          [disabled]="store.days().length === 0"
+        >
+          @for (day of store.days(); track day.date) {
+            <option [value]="day.date" [selected]="day.date === store.selectedDate()">
+              {{ dayLabel(day) }}
+            </option>
+          } @empty {
+            <option value="">Sin días con paradas</option>
+          }
+        </select>
+      </label>
+      <app-summary-cards [summary]="store.summary()" />
+    </section>
+
+    <section class="optimise card">
+      <div class="optimise-head">
+        <div>
+          <h2>Optimización</h2>
+          <p class="hint">Reparte las paradas entre las furgonetas y ordena cada ruta.</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        class="btn btn-primary btn-block"
+        [disabled]="!canOptimise()"
+        (click)="optimise()"
+      >
+        @if (jobs.requesting()) {
+          <span class="spinner"></span> Enviando…
+        } @else {
+          Optimizar este día
+        }
+      </button>
+
+      @if (store.summary().overCapacity) {
+        <p class="note warn">
+          Hay más bultos ({{ store.summary().parcels }}) que capacidad en la flota ({{
+            store.summary().capacity
+          }}): no hay solución posible.
+        </p>
+      } @else if (store.summary().vehicles === 0 && store.warehouse()) {
+        <p class="note warn">
+          El almacén no tiene furgonetas. <a routerLink="/datos">Añádelas en Datos</a>.
+        </p>
+      }
+
+      @if (jobs.error(); as error) {
+        <div class="alert" role="alert">
+          {{ error.message }}
+          @if (jobs.active()) {
+            <button type="button" class="btn btn-sm" (click)="resume()">Reintentar</button>
+          }
+        </div>
+      }
+
+      @if (jobs.current(); as job) {
+        @switch (job.status) {
+          @case ('QUEUED') {
+            <div class="progress" role="status">
+              <span class="spinner"></span>
+              <div>
+                <strong>En cola</strong>
+                <span class="hint">Esperando al optimizador…</span>
+              </div>
+            </div>
+          }
+          @case ('RUNNING') {
+            <div class="progress" role="status">
+              <span class="spinner"></span>
+              <div>
+                <strong>Calculando las rutas</strong>
+                <span class="hint">Puede tardar hasta unos 30 segundos.</span>
+              </div>
+            </div>
+          }
+          @case ('FAILED') {
+            <div class="alert" role="alert">
+              <strong>No se pudo optimizar</strong>
+              <span>{{ failure(job.failureReason) }}</span>
+            </div>
+          }
+          @case ('COMPLETED') {
+            @if (stale()) {
+              <p class="note warn">
+                Las paradas de este día han cambiado desde el último cálculo. Vuelve a optimizar
+                para ver las rutas.
+              </p>
+            } @else {
+              <dl class="result">
+                <div>
+                  <dt>Optimizado</dt>
+                  <dd>{{ km(job.totalKm) }}</dd>
+                </div>
+                <div>
+                  <dt>Sin optimizar</dt>
+                  <dd class="muted">{{ km(job.baselineKm) }}</dd>
+                </div>
+                <div class="saving">
+                  <dt>Ahorro</dt>
+                  <dd>{{ savedPct(job) }} %</dd>
+                </div>
+              </dl>
+              <p class="hint">
+                Calculado en {{ seconds(job.computeMillis) }}. «Sin optimizar» es un reparto en
+                orden de llegada: el ahorro real frente a una ruta ya razonable será menor.
+                <a routerLink="/resultados">Ver detalle</a>
+              </p>
+            }
+          }
+        }
+      }
+    </section>
+
+    @if (routes().length > 0) {
+      <section>
+        <h2>Rutas</h2>
+        <ul class="routes">
+          @for (route of routes(); track route.id) {
+            <li>
+              <button
+                type="button"
+                [class.selected]="activeRoute() === route.id"
+                [attr.aria-pressed]="activeRoute() === route.id"
+                (click)="toggleRoute(route.id)"
+              >
+                <i class="swatch" [style.background]="route.color"></i>
+                <span class="name">{{ route.name }}</span>
+                <span class="meta">
+                  {{ route.stops.length }} paradas · {{ route.parcels }}/{{ route.capacity }} bultos
+                  ·
+                  {{ km(route.km) }}
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    } @else {
+      <section>
+        <h2>Flota</h2>
+        <app-fleet-list [vehicles]="store.vehicles()" />
+      </section>
+    }
+
+    <section class="stops">
+      <h2>
+        Paradas <span class="count">{{ store.stops().length }}</span>
+      </h2>
+      <div class="stops-scroll">
+        <app-stop-list
+          [stops]="store.stops()"
+          [selectedId]="store.selectedStopId()"
+          (selected)="store.selectStop($event)"
+        />
+      </div>
+    </section>
+
+    <details class="import">
+      <summary>Importar paradas desde CSV</summary>
+      <app-import-panel />
+    </details>
+  </aside>
+
+  <section class="map-area" aria-label="Mapa">
+    <app-route-map
+      [warehouse]="store.warehouse()"
+      [stops]="store.stops()"
+      [routes]="routes()"
+      [activeRouteId]="activeRoute()"
+      [selectedStopId]="store.selectedStopId()"
+      (stopSelected)="store.selectStop($event)"
+    />
+
+    @if (store.loading() && store.stops().length === 0) {
+      <div class="overlay" role="status">Cargando datos…</div>
+    }
+
+    @if (store.isEmpty()) {
+      <div class="overlay empty" role="status">
+        <h2>Todavía no hay datos</h2>
+        <p>
+          Crea un almacén, sus furgonetas y las paradas del día en <a routerLink="/datos">Datos</a>,
+          o arranca la API con los datos de ejemplo de Madrid sur:
+        </p>
+        <pre>RUTAFLEX_SAMPLE_DATA_ENABLED=true mvn -pl route-api spring-boot:run</pre>
+      </div>
+    }
+  </section>
+</main>

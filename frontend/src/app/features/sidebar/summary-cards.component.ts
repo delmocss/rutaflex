@@ -52,7 +52,7 @@ import { PlanSummary } from '../../core/domain';
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      background: #f8fafc;
+      background: var(--sunken);
     }
     .card.wide {
       grid-column: 1 / -1;
@@ -87,8 +87,8 @@ import { PlanSummary } from '../../core/domain';
       background: var(--brand);
     }
     .warn {
-      border-color: #fca5a5;
-      background: #fef2f2;
+      border-color: #e2bfb9;
+      background: var(--danger-soft);
     }
     .warn .bar span {
       background: var(--danger);
