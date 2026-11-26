@@ -70,7 +70,7 @@ import { Stop } from '../../core/models';
       cursor: pointer;
     }
     button:hover {
-      background: #f1f5f9;
+      background: var(--sunken);
     }
     button:focus-visible {
       outline: 2px solid var(--brand);
@@ -78,7 +78,7 @@ import { Stop } from '../../core/models';
     }
     button.selected {
       border-left-color: var(--brand);
-      background: #ecfeff;
+      background: var(--brand-soft);
     }
     .num {
       grid-area: num;
@@ -99,13 +99,13 @@ import { Stop } from '../../core/models';
     .chip {
       padding: 1px 7px;
       border-radius: 999px;
-      background: #e2e8f0;
+      background: var(--sunken);
       font-size: 11px;
-      color: #334155;
+      color: var(--ink);
     }
     .chip.window {
-      background: #fef3c7;
-      color: #92400e;
+      background: var(--accent-soft);
+      color: #7b5718;
     }
     .empty {
       margin: 0;
