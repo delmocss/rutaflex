@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.rutaflex</groupId>
+        <artifactId>rutaflex</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>e2e-tests</artifactId>
+    <name>e2e-tests</name>
+    <description>Prueba de extremo a extremo: PostGIS y Kafka reales y los dos servicios empaquetados, como en produccion.</description>
+
+    <!--
+        Arranca los jars ejecutables (-exec) de route-api y optimizer-service como procesos, asi que se prueba lo
+        que se desplegaria. Depende de ambos modulos solo para que Maven los construya antes (tambien con
+        -T o -pl ... -am) y se ejecuta con failsafe en la fase integration-test, cuando los jars ya estan
+        empaquetados: `mvn verify` desde la raiz. Si se lanza aislado (-pl e2e-tests) usa los jars que haya
+        en target/, que pueden estar desactualizados.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>com.rutaflex</groupId>
+            <artifactId>route-api</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.rutaflex</groupId>
+            <artifactId>optimizer-service</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>kafka</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <rutaflex.jar.route-api>${project.basedir}/../route-api/target/route-api-${project.version}-exec.jar</rutaflex.jar.route-api>
+                        <rutaflex.jar.optimizer>${project.basedir}/../optimizer-service/target/optimizer-service-${project.version}-exec.jar</rutaflex.jar.optimizer>
+                        <rutaflex.logs>${project.build.directory}/e2e-logs</rutaflex.logs>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

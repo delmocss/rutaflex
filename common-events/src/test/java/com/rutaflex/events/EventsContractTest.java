@@ -23,8 +23,9 @@ class EventsContractTest {
     @Test
     void topicNamesAreDistinct() {
         Set<String> names = new HashSet<>(List.of(
-                Topics.OPTIMIZATION_REQUESTED, Topics.OPTIMIZATION_COMPLETED, Topics.OPTIMIZATION_FAILED));
-        assertThat(names).hasSize(3);
+                Topics.OPTIMIZATION_REQUESTED, Topics.OPTIMIZATION_STARTED, Topics.OPTIMIZATION_COMPLETED,
+                Topics.OPTIMIZATION_FAILED));
+        assertThat(names).hasSize(4);
     }
 
     @Test
@@ -47,6 +48,13 @@ class EventsContractTest {
 
         assertThat(text).contains("\"deliveryDate\":\"2026-12-14\"").contains("\"windowStart\":\"09:00:00\"");
         assertThat(json.readValue(text, OptimizationRequested.class)).isEqualTo(event);
+    }
+
+    @Test
+    void startedSurvivesJsonRoundTrip() throws Exception {
+        var event = new OptimizationStarted(UUID.randomUUID());
+
+        assertThat(json.readValue(json.writeValueAsString(event), OptimizationStarted.class)).isEqualTo(event);
     }
 
     @Test
