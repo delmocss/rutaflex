@@ -12,6 +12,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.util.concurrent.TimeUnit;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -97,6 +101,14 @@ class RutaFlexEndToEndIT {
         for (Process process : new Process[] {routeApi, optimizer}) {
             if (process != null) {
                 process.destroy();
+                try {
+                    if (!process.waitFor(15, TimeUnit.SECONDS)) {
+                        process.destroyForcibly();
+                    }
+                } catch (InterruptedException e) {
+                    process.destroyForcibly();
+                    Thread.currentThread().interrupt();
+                }
             }
         }
         if (kafka != null) {
@@ -222,16 +234,26 @@ class RutaFlexEndToEndIT {
     }
 
     @Test
-    void aSecondRequestForTheSameDayWhileOneIsRunningIsRefused() throws Exception {
+    void aSecondRequestForADayWithAnActiveJobIsRefused() throws Exception {
         addStop("2026-12-21", "Uno", 40.21, -3.65, 1, null);
-        String id = request("2026-12-21");
+        // Un trabajo RUNNING ya existente para ese dia, insertado directamente: sin depender de cuanto tarde el solver.
+        insertJob("2026-12-21", "RUNNING");
 
-        // El solver tarda como minimo lo que dura su limite sin mejora (3 s aqui), asi que el primer trabajo
-        // sigue activo cuando llega la segunda peticion.
         HttpResponse<String> second = send("POST", "/api/optimizations", "{\"deliveryDate\": \"2026-12-21\"}");
 
         assertThat(second.statusCode()).as(second.body()).isEqualTo(409);
-        assertThat(awaitFinished(id).get("status").asText()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void anUnreadableRequestForAKnownJobFailsThatJobInsteadOfLeavingItWaiting() throws Exception {
+        // Un trabajo QUEUED cuyo mensaje llega ilegible (por ejemplo, por versiones distintas de los servicios).
+        String id = insertJob("2026-12-22", "QUEUED");
+        publish("optimization.requested", id, "{\"jobId\": \"" + id + "\", \"deliveryDate\": \"sin sentido\"}");
+
+        JsonNode job = awaitFinished(id);
+
+        assertThat(job.get("status").asText()).isEqualTo("FAILED");
+        assertThat(job.get("failureReason").asText()).contains("could not be read");
     }
 
     // ---- ayudas ----
@@ -280,6 +302,23 @@ class RutaFlexEndToEndIT {
         request = body == null ? request.method(method, HttpRequest.BodyPublishers.noBody())
                 : request.method(method, HttpRequest.BodyPublishers.ofString(body));
         return HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** Inserta un trabajo directamente en la base de datos y devuelve su id. */
+    private static String insertJob(String day, String status) throws Exception {
+        String warehouse = get("/api/warehouses").get(0).get("id").asText();
+        String id = UUID.randomUUID().toString();
+        try (Connection db = DriverManager.getConnection(postgis.getJdbcUrl(), postgis.getUsername(),
+                postgis.getPassword());
+             PreparedStatement insert = db.prepareStatement("INSERT INTO optimization_job "
+                     + "(id, warehouse_id, delivery_date, status) VALUES (?::uuid, ?::uuid, ?::date, ?)")) {
+            insert.setString(1, id);
+            insert.setString(2, warehouse);
+            insert.setString(3, day);
+            insert.setString(4, status);
+            insert.executeUpdate();
+        }
+        return id;
     }
 
     // ---- Kafka directo ----

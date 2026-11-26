@@ -15,11 +15,30 @@
     <description>Prueba de extremo a extremo: PostGIS y Kafka reales y los dos servicios empaquetados, como en produccion.</description>
 
     <!--
-        No depende de los otros modulos: arranca sus jars ejecutables como procesos. Por eso va el ultimo en
-        la lista de modulos del pom raiz (Maven los construye en ese orden) y se ejecuta con failsafe en la fase
-        integration-test, cuando los jars ya estan empaquetados: `mvn verify` en la raiz.
+        Arranca los jars ejecutables (-exec) de route-api y optimizer-service como procesos, asi que se prueba lo
+        que se desplegaria. Depende de ambos modulos solo para que Maven los construya antes (tambien con
+        -T o -pl ... -am) y se ejecuta con failsafe en la fase integration-test, cuando los jars ya estan
+        empaquetados: `mvn verify` desde la raiz. Si se lanza aislado (-pl e2e-tests) usa los jars que haya
+        en target/, que pueden estar desactualizados.
     -->
     <dependencies>
+        <dependency>
+            <groupId>com.rutaflex</groupId>
+            <artifactId>route-api</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.rutaflex</groupId>
+            <artifactId>optimizer-service</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

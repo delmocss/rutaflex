@@ -10,6 +10,11 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       acks: all
+      properties:
+        # Acotan el tiempo que una peticion HTTP puede quedar esperando al broker (ver OptimizationRequestPublisher).
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 8000
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
     consumer:
@@ -33,6 +38,13 @@ spring:
     multipart:
       max-file-size: 1MB
       max-request-size: 1MB
+
+rutaflex:
+  jobs:
+    # Un trabajo QUEUED o RUNNING que lleva mas de esto sin terminar se marca FAILED: es la red de seguridad
+    # frente a mensajes perdidos, para que ningun trabajo bloquee su almacen y dia para siempre.
+    timeout: ${RUTAFLEX_JOBS_TIMEOUT:10m}
+    reaper-interval: ${RUTAFLEX_JOBS_REAPER_INTERVAL:30s}
 
 server:
   port: ${PORT:8080}

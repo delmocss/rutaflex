@@ -93,6 +93,17 @@ class OptimizationJobRepository {
                 .update() == 1;
     }
 
+    /** Marca FAILED los trabajos activos que llevan mas de {@code seconds} segundos; devuelve cuantos. */
+    int failStale(long seconds, String reason) {
+        return jdbc.sql("""
+                        UPDATE optimization_job SET status = 'FAILED', failure_reason = :reason, finished_at = now()
+                         WHERE status IN ('QUEUED', 'RUNNING')
+                           AND requested_at < now() - make_interval(secs => :seconds)""")
+                .param("reason", reason)
+                .param("seconds", seconds)
+                .update();
+    }
+
     private static Row map(ResultSet rs, int row) throws SQLException {
         return new Row(
                 rs.getObject("id", UUID.class),

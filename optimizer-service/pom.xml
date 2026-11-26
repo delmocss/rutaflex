@@ -55,7 +55,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <!-- El jar ejecutable va aparte: el normal queda como dependencia de e2e-tests. -->
+                    <!-- El jar ejecutable va aparte (-exec): e2e-tests lo arranca como proceso; el normal sigue siendo un jar usable como libreria. -->
                     <classifier>exec</classifier>
                 </configuration>
             </plugin>

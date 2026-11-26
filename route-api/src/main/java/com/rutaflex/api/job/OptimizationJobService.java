@@ -83,10 +83,29 @@ public class OptimizationJobService {
             publisher.publish(problem(id, deliveryDate, warehouse, fleet, dayStops));
         } catch (RuntimeException e) {
             // El trabajo no esta realmente en cola: se deja constancia y se avisa, en vez de dejarlo colgado.
-            jobs.markFailed(id, "The job could not be queued: the message broker is unavailable");
+            // Si ni siquiera eso se puede guardar, el 503 se da igual y el vigilante lo cerrara despues.
+            try {
+                jobs.markFailed(id, "The job could not be queued: the message could not be delivered to Kafka");
+            } catch (RuntimeException markFailure) {
+                log.error("Job {}: could not mark it FAILED after a publish failure; the reaper will", id, markFailure);
+            }
             throw new ServiceUnavailableException("The optimization could not be queued, try again shortly", e);
         }
-        return get(id);
+        return accepted(id, warehouse.id(), deliveryDate);
+    }
+
+    /**
+     * Respuesta al pedir: lo que se acaba de guardar. Si la lectura falla justo despues de publicar, el
+     * trabajo ya esta en marcha, asi que se devuelve el estado inicial en vez de un error que invitaria a repetirlo.
+     */
+    private JobResponse accepted(UUID id, UUID warehouseId, LocalDate deliveryDate) {
+        try {
+            return get(id);
+        } catch (RuntimeException e) {
+            log.warn("Job {}: accepted, but reading it back failed; answering with its initial state", id, e);
+            return new JobResponse(id, warehouseId, deliveryDate, JobStatus.QUEUED, null, null, null,
+                    java.time.Instant.now(), null, null, null, null);
+        }
     }
 
     public JobResponse get(UUID id) {

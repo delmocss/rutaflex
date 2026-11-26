@@ -17,7 +17,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class OptimizationRequestPublisher {
 
-    private static final long CONFIRMATION_SECONDS = 10;
+    // Mayor que delivery.timeout.ms del productor (8 s, ver application.yml): cuando get() expira, el productor
+    // ya ha desistido de verdad y el mensaje no puede llegar despues. Asi un 503 significa "no se envio".
+    private static final long CONFIRMATION_SECONDS = 15;
 
     private final KafkaTemplate<String, String> kafka;
     private final ObjectMapper json;
