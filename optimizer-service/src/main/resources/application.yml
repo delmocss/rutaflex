@@ -1,6 +1,24 @@
 spring:
   application:
     name: optimizer-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: optimizer-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+rutaflex:
+  optimizer:
+    # Tiempo máximo de cálculo por trabajo, y parada anticipada si la solución deja de mejorar.
+    spent-limit: ${OPTIMIZER_SPENT_LIMIT:30s}
+    unimproved-limit: ${OPTIMIZER_UNIMPROVED_LIMIT:8s}
+    random-seed: 42
 
 server:
   port: ${PORT:8081}
