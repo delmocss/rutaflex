@@ -6,6 +6,9 @@ public final class Topics {
     /** La API pide una optimizacion: lleva el problema completo (almacen, furgonetas, paradas). */
     public static final String OPTIMIZATION_REQUESTED = "optimization.requested";
 
+    /** El optimizador avisa de que ha empezado a calcular (el trabajo pasa a RUNNING). */
+    public static final String OPTIMIZATION_STARTED = "optimization.started";
+
     /** El optimizador devuelve las rutas calculadas. */
     public static final String OPTIMIZATION_COMPLETED = "optimization.completed";
 

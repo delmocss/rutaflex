@@ -22,6 +22,8 @@
         <module>common-events</module>
         <module>route-api</module>
         <module>optimizer-service</module>
+        <!-- El ultimo: arranca los jars ejecutables de los anteriores. -->
+        <module>e2e-tests</module>
     </modules>
 
     <properties>

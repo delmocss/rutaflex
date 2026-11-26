@@ -52,7 +52,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        for topic in optimization.requested optimization.completed optimization.failed; do
+        for topic in optimization.requested optimization.started optimization.completed optimization.failed; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists \
             --topic $$topic --partitions 1 --replication-factor 1
         done
