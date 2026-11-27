@@ -4,6 +4,9 @@ import com.rutaflex.events.OptimizationCompleted;
 import com.rutaflex.events.OptimizationFailed;
 import com.rutaflex.events.OptimizationRequested;
 import com.rutaflex.events.OptimizationStarted;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -32,6 +35,7 @@ public class OptimizationHandler {
     private final RouteOptimizer optimizer;
     private final EventPublisher publisher;
     private final Duration maxRequestAge;
+    private final MeterRegistry metrics;
     private final ProcessedJobs processed = new ProcessedJobs(1000);
 
     /** Resultados calculados cuya publicación falló, a la espera del reintento. Acotado. */
@@ -42,10 +46,16 @@ public class OptimizationHandler {
         }
     };
 
-    public OptimizationHandler(RouteOptimizer optimizer, EventPublisher publisher, Duration maxRequestAge) {
+    public OptimizationHandler(RouteOptimizer optimizer, EventPublisher publisher, Duration maxRequestAge,
+                               MeterRegistry metrics) {
         this.optimizer = optimizer;
         this.publisher = publisher;
         this.maxRequestAge = maxRequestAge;
+        this.metrics = metrics;
+    }
+
+    public OptimizationHandler(RouteOptimizer optimizer, EventPublisher publisher, Duration maxRequestAge) {
+        this(optimizer, publisher, maxRequestAge, new SimpleMeterRegistry());
     }
 
     public OptimizationHandler(RouteOptimizer optimizer, EventPublisher publisher) {
@@ -73,6 +83,11 @@ public class OptimizationHandler {
                 OptimizationCompleted result = takeUnsent(jobId);
                 if (result == null) {
                     result = optimizer.optimize(request);
+                    // Solo cuenta el calculo real (no la republicacion de un resultado ya calculado).
+                    Timer.builder("rutaflex.optimizer.solve")
+                            .description("Tiempo que tarda el optimizador en resolver un problema")
+                            .register(metrics)
+                            .record(Duration.ofMillis(result.computeMillis()));
                 }
                 try {
                     publisher.completed(result);
@@ -83,6 +98,7 @@ public class OptimizationHandler {
                 log.info("Job {}: {} km (baseline {} km) in {} ms", jobId, result.totalKm(), result.baselineKm(),
                         result.computeMillis());
             } catch (OptimizationException e) {
+                metrics.counter("rutaflex.optimizer.unsolvable").increment();
                 log.info("Job {}: no solution: {}", jobId, e.getMessage());
                 publisher.failed(new OptimizationFailed(jobId, e.getMessage(), 1));
             }

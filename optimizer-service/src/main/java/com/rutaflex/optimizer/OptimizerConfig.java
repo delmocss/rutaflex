@@ -3,6 +3,7 @@ package com.rutaflex.optimizer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rutaflex.optimizer.solver.Assumptions;
 import com.rutaflex.optimizer.solver.RouteSolver;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,8 +27,8 @@ class OptimizerConfig {
 
     @Bean
     OptimizationHandler optimizationHandler(RouteOptimizer optimizer, EventPublisher publisher,
-                                            OptimizerProperties properties) {
-        return new OptimizationHandler(optimizer, publisher, properties.maxRequestAge());
+                                            OptimizerProperties properties, MeterRegistry metrics) {
+        return new OptimizationHandler(optimizer, publisher, properties.maxRequestAge(), metrics);
     }
 
     @Bean

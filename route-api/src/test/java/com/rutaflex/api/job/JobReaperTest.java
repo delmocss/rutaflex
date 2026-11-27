@@ -4,14 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.rutaflex.api.AbstractApiTest;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
 
 /** Con un plazo de 2 s y el vigilante cada 300 ms, comprueba también que está programado de verdad (sin llamarlo a mano). */
 @TestPropertySource(properties = {"rutaflex.jobs.timeout=2s", "rutaflex.jobs.reaper-interval=300ms"})
 class JobReaperTest extends AbstractApiTest {
+
+    @Autowired
+    MeterRegistry registry;
 
     /** Inserta un trabajo con la antigüedad indicada (en segundos) y devuelve su id. */
     private UUID insertJob(String status, int ageSeconds, String day) {
@@ -50,6 +55,8 @@ class JobReaperTest extends AbstractApiTest {
         assertThat(jdbc.queryForObject("SELECT finished_at IS NOT NULL FROM optimization_job WHERE id = ?",
                 Boolean.class, staleQueued)).isTrue();
         assertThat(statusOf(oldCompleted)).isEqualTo("COMPLETED");
+        // Los trabajos cerrados por el vigilante quedan contados.
+        assertThat(registry.find("rutaflex.jobs.reaped").counter().count()).isGreaterThanOrEqualTo(2.0);
         // El reciente aun esta dentro de plazo (el test termina antes de que cumpla 2 s).
         assertThat(statusOf(recent)).isIn("QUEUED", "FAILED");
     }

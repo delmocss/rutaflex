@@ -13,8 +13,8 @@ Optimización de rutas de reparto para una pequeña empresa de paquetería: reci
 | 2b | UI (Angular + Leaflet): portada, planificación con rutas sobre el mapa, historial de resultados y gestión de datos (sin login todavía) | ✅ |
 | 3 | Optimizador con Timefold (resuelve solo, sin Kafka): restricciones y comparación con la línea base | ✅ |
 | 4 | Kafka: trabajo asíncrono con estado (202 + id), consumidores idempotentes, test de extremo a extremo | ✅ |
-| 5 | Opcionales de Kafka: outbox, dead letter con reintentos por topic, métricas Micrometer | ⏳ |
-| 6 | Restricciones reales y medición de km ahorrados | ⏳ |
+| 5 | Opcionales de Kafka: outbox y dead letter con reintentos por topic | ⏳ |
+| 6 | Medición honesta y reproducible de los km ahorrados, y métricas Micrometer | ✅ |
 | 7 | JWT con dos roles (COORDINADOR / REPARTIDOR) en el backend y en la UI | ⏳ |
 | 8-9 | Despliegue, documentación y vídeo | ⏳ |
 
@@ -177,14 +177,44 @@ Si el problema no tiene solución (más bultos que capacidad, una franja imposib
 
 **Supuestos del modelo.** No hay red viaria: la distancia es la de la línea recta multiplicada por 1,3 (rodeo urbano típico) y la velocidad media es de 30 km/h; cada parada tarda 2 min más 30 s por bulto. Son estimaciones, no rutas reales por calle. Se aplican igual a la solución y a la línea base (mismas distancias), pero la línea base es más simple que la solución —no mira franjas ni jornada—, así que la comparación mide distancia, no viabilidad.
 
-**Medición con el dataset de 80 paradas** (4 furgonetas de 60 bultos, hasta 20 s de cálculo, semilla fija):
+### Medición: cuántos km ahorra
 
-| | km |
+Sobre el dataset de ejemplo (80 paradas, 4 furgonetas), con el optimizador parado tras 60 000 pasos de búsqueda y la semilla 1, 2 y 3:
+
+| Comparación | Km de la referencia | Ahorro del optimizador (117,2 km de media) |
+|---|---:|---:|
+| Reparto **sin ordenar** (orden de llegada): la referencia del plan | 793,8 | **85,2 %** |
+| Reparto **con sentido común** (barrido por ángulo + vecino más cercano) | 131,5 | **10,9 %** |
+| Lo mismo, pero **sin franjas horarias** en ambos lados | 131,5 | 14,3 % (112,6 km) |
+
+Cómo leerlo, sin adornos:
+
+- El 85 % es cierto pero **es el techo, no una promesa**: se compara contra el reparto más ingenuo posible. Lo que cuenta frente a un despachante razonable es el **11 %**.
+- Esa referencia razonable es **inviable**: 6 paradas llegarían tarde a su franja. La solución del optimizador las cumple todas, así que el 11 % es una estimación conservadora.
+- Respetar las 28 franjas horarias cuesta unos 4,6 km (4 %) respecto a ignorarlas.
+- La búsqueda se aplana hacia los 80 000 pasos (116,3 km); con pocos pasos el resultado es peor (con 20 000, 157,7 km, peor que la referencia razonable).
+- Es un conjunto sintético de una zona y un día: demuestra el método, no un porcentaje para otro negocio. Las distancias son estimadas (línea recta × 1,3).
+
+**Es reproducible.** El optimizador se detiene por número de pasos, no por tiempo, y las referencias no usan aleatoriedad: con el mismo entorno la misma semilla da exactamente el mismo resultado (la semilla 1 dio 117,38 km en ejecuciones independientes, y `ReproducibilityTest` lo comprueba en cada `mvn verify`). El informe completo, con las tres semillas, la curva de convergencia y el método, lo genera este comando (tarda unos 9 minutos):
+
+```bash
+mvn -pl optimizer-service -am test -Dtest=MeasurementReport -Drutaflex.measure=true
+```
+
+→ [`docs/measurement.md`](docs/measurement.md)
+
+### Métricas
+
+Visibles en `/actuator/metrics` de la API:
+
+| Métrica | Qué mide |
 |---|---|
-| Línea base: paradas en el orden de llegada, cada una en la primera furgoneta con hueco | 793,8 |
-| Optimizado | 122,5 |
+| `rutaflex.optimization.compute` | Tiempo de cálculo de cada optimización |
+| `rutaflex.optimization.km.saved` / `.saved.percent` | Km (y %) que ahorra cada una frente al orden de llegada |
+| `rutaflex.jobs.requested`, `rutaflex.jobs.finished{result}` | Trabajos pedidos y cómo terminan (completados o fallidos) |
+| `rutaflex.jobs.reaped` | Trabajos que tuvo que cerrar el vigilante |
 
-Una reducción del 85 %, pero **hay que leerla con cuidado**: las paradas del CSV llegan mezcladas entre tres municipios, así que la línea base es deliberadamente ingenua (cada furgoneta salta de un pueblo a otro) y además no respeta las franjas horarias. Un despachante real ordenaría al menos por zonas. Esa cifra es el techo del ahorro, no una promesa; la Fase 6 añade una referencia más exigente (vecino más cercano por zona) para dar un número defendible. La búsqueda tiene un límite de tiempo, así que el resultado exacto varía un poco entre ejecuciones; los tests solo exigen umbrales holgados.
+Solo se registra lo que se aplica de verdad: un resultado repetido o tardío no cuenta dos veces. El optimizador expone además `rutaflex.optimizer.solve` (tiempo de resolución) y `rutaflex.optimizer.unsolvable`.
 
 ## Tests
 
@@ -192,8 +222,8 @@ Una reducción del 85 %, pero **hay que leerla con cuidado**: las paradas del CS
 
 - `common-events`: los eventos viajan como JSON y vuelven iguales.
 - `route-api`: PostgreSQL + PostGIS **reales** con Testcontainers (nunca H2), con un único contenedor compartido: migraciones de Flyway, geografía en metros, restricciones del esquema, los CRUD de almacenes, furgonetas y paradas, la importación CSV (todo o nada, errores por fila, `replace` atómico) y el dataset de ejemplo.
-- `route-api` (trabajos): con PostGIS **y Kafka reales** — pedir una optimización (202, mensaje publicado con el problema completo y las paradas en su orden), conflictos y datos que faltan, el consumo de resultados con mensajes repetidos, tardíos, de trabajos desconocidos e ilegibles (comprobado por mutación: quitar la condición de estado de cualquier transición hace fallar los tests), el vigilante de trabajos atascados (programado de verdad, no llamado a mano) y el fallo al encolar incluso cuando tampoco se puede guardar el fallo.
-- `optimizer-service`: la lógica de atender una petición sin Kafka (inicio y resultado, duplicado ignorado, problema imposible, reintento sin recalcular, petición antigua), los caminos de fallo (petición ilegible con y sin trabajo identificable, un aviso que tampoco se puede publicar sin provocar bucles) y cada restricción de Timefold aislada con `ConstraintVerifier` y números calculables a mano (17 tests), la resolución del dataset de 80 paradas verificada con un cálculo independiente de km, capacidad, franjas y vuelta al almacén, una ejecución con `FULL_ASSERT` (comprueba que la puntuación incremental del solver coincide con la recalculada), la validación de entradas incorrectas y los problemas imposibles, que se rechazan con su motivo. Además, `OptimizerApplicationTest` comprueba que el servicio arranca y responde en `/actuator/health`.
+- `route-api` (trabajos): con PostGIS **y Kafka reales** — pedir una optimización (202, mensaje publicado con el problema completo y las paradas en su orden), conflictos y datos que faltan, el consumo de resultados con mensajes repetidos, tardíos, de trabajos desconocidos e ilegibles (comprobado por mutación: quitar la condición de estado de cualquier transición hace fallar los tests), el vigilante de trabajos atascados (programado de verdad, no llamado a mano), las métricas (solo cuentan lo aplicado; comprobado por mutación) y su exposición en `/actuator/metrics` y el fallo al encolar incluso cuando tampoco se puede guardar el fallo.
+- `optimizer-service`: la lógica de atender una petición sin Kafka (inicio y resultado, duplicado ignorado, problema imposible, reintento sin recalcular, petición antigua), los caminos de fallo (petición ilegible con y sin trabajo identificable, un aviso que tampoco se puede publicar sin provocar bucles) y cada restricción de Timefold aislada con `ConstraintVerifier` y números calculables a mano (17 tests), las dos referencias de comparación con números calculables a mano (también cuántas franjas incumplirían), la reproducibilidad (misma semilla y pasos, mismo resultado), la resolución del dataset de 80 paradas verificada con un cálculo independiente de km, capacidad, franjas y vuelta al almacén, una ejecución con `FULL_ASSERT` (comprueba que la puntuación incremental del solver coincide con la recalculada), la validación de entradas incorrectas y los problemas imposibles, que se rechazan con su motivo. Además, `OptimizerApplicationTest` comprueba que el servicio arranca y responde en `/actuator/health`.
 - `e2e-tests`: **PostGIS y Kafka reales y los dos jars ejecutables** (los que se desplegarían), cada uno en su proceso. Optimiza el día de 80 paradas de punta a punta y comprueba que cada parada aparece una vez, la capacidad y las franjas; que los problemas imposibles acaban `FAILED` con su motivo; que un mensaje duplicado no se recalcula (el optimizador publica un solo resultado); que la basura en el topic no bloquea los siguientes; que una petición ilegible de un trabajo conocido lo deja `FAILED`; y el 409 con un trabajo activo. Se ejecuta con failsafe en `mvn verify`.
 - `frontend`: 104 tests unitarios con Vitest (lógica de dominio y de rutas, traducción de errores, formularios y los dos estados —datos y optimizaciones—, incluidas las respuestas que llegan fuera de orden) más `npm run build` y el formato con Prettier.
 

@@ -13,6 +13,7 @@ import com.rutaflex.events.OptimizationRequested.Warehouse;
 import com.rutaflex.events.OptimizationStarted;
 import com.rutaflex.optimizer.solver.Assumptions;
 import com.rutaflex.optimizer.solver.RouteSolver;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -57,10 +58,11 @@ class OptimizationHandlerTest {
     }
 
     private final RecordingPublisher publisher = new RecordingPublisher();
+    private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
     private final OptimizationHandler handler = new OptimizationHandler(
             new RouteOptimizer(new RouteSolver(Duration.ofSeconds(2), Duration.ofSeconds(1), 1L),
                     Assumptions.DEFAULT),
-            publisher);
+            publisher, Duration.ofHours(1), metrics);
 
     private static OptimizationRequested request(int parcelsPerStop, int capacity) {
         List<Stop> stops = List.of(
@@ -142,5 +144,23 @@ class OptimizationHandlerTest {
         handler.handle(request(2, 60));
 
         assertThat(publisher.log).containsExactly("started", "completed", "started", "completed");
+    }
+
+    @Test
+    void theSolveTimeIsRecordedOncePerRealCalculation() {
+        OptimizationRequested request = request(2, 60);
+
+        handler.handle(request);
+        handler.handle(request); // duplicado: no se vuelve a calcular ni a medir
+
+        assertThat(metrics.find("rutaflex.optimizer.solve").timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void anUnsolvableProblemIsCountedAndNotTimed() {
+        handler.handle(request(30, 60));
+
+        assertThat(metrics.find("rutaflex.optimizer.unsolvable").counter().count()).isEqualTo(1.0);
+        assertThat(metrics.find("rutaflex.optimizer.solve").timer()).isNull();
     }
 }
