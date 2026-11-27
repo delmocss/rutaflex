@@ -50,15 +50,18 @@ public class OptimizationJobService {
     private final StopService stops;
     private final OptimizationRequestPublisher publisher;
     private final ObjectMapper json;
+    private final JobMetrics metrics;
 
     OptimizationJobService(OptimizationJobRepository jobs, WarehouseService warehouses, VehicleService vehicles,
-                           StopService stops, OptimizationRequestPublisher publisher, ObjectMapper json) {
+                           StopService stops, OptimizationRequestPublisher publisher, ObjectMapper json,
+                           JobMetrics metrics) {
         this.jobs = jobs;
         this.warehouses = warehouses;
         this.vehicles = vehicles;
         this.stops = stops;
         this.publisher = publisher;
         this.json = json;
+        this.metrics = metrics;
     }
 
     public JobResponse request(LocalDate deliveryDate, UUID warehouseId) {
@@ -78,6 +81,7 @@ public class OptimizationJobService {
         } catch (DuplicateKeyException e) {
             throw new ConflictException("An optimization for this warehouse and day is already in progress");
         }
+        metrics.requested();
 
         try {
             publisher.publish(problem(id, deliveryDate, warehouse, fleet, dayStops));
@@ -85,7 +89,9 @@ public class OptimizationJobService {
             // El trabajo no esta realmente en cola: se deja constancia y se avisa, en vez de dejarlo colgado.
             // Si ni siquiera eso se puede guardar, el 503 se da igual y el vigilante lo cerrara despues.
             try {
-                jobs.markFailed(id, "The job could not be queued: the message could not be delivered to Kafka");
+                if (jobs.markFailed(id, "The job could not be queued: the message could not be delivered to Kafka")) {
+                    metrics.failed();
+                }
             } catch (RuntimeException markFailure) {
                 log.error("Job {}: could not mark it FAILED after a publish failure; the reaper will", id, markFailure);
             }
@@ -129,8 +135,12 @@ public class OptimizationJobService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Could not serialise the optimization result", e);
         }
-        record(event.jobId(), "completed", jobs.markCompleted(event.jobId(), result,
-                BigDecimal.valueOf(event.totalKm()), BigDecimal.valueOf(event.baselineKm())));
+        boolean applied = jobs.markCompleted(event.jobId(), result, BigDecimal.valueOf(event.totalKm()),
+                BigDecimal.valueOf(event.baselineKm()));
+        record(event.jobId(), "completed", applied);
+        if (applied) {
+            metrics.completed(event);
+        }
     }
 
     public void onFailed(UUID jobId, String reason) {
@@ -138,7 +148,11 @@ public class OptimizationJobService {
         if (text.length() > MAX_REASON_LENGTH) {
             text = text.substring(0, MAX_REASON_LENGTH);
         }
-        record(jobId, "failed", jobs.markFailed(jobId, text));
+        boolean applied = jobs.markFailed(jobId, text);
+        record(jobId, "failed", applied);
+        if (applied) {
+            metrics.failed();
+        }
     }
 
     private static void record(UUID jobId, String event, boolean applied) {

@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.rutaflex.api.AbstractApiTest;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -21,6 +23,18 @@ class JobEnqueueFailureTest extends AbstractApiTest {
 
     @MockitoSpyBean
     OptimizationJobRepository jobs;
+
+    @Autowired
+    MeterRegistry registry;
+
+    private double metric(String name, String result) {
+        var search = registry.find(name);
+        if (result != null) {
+            search = search.tag("result", result);
+        }
+        var counter = search.counter();
+        return counter == null ? 0 : counter.count();
+    }
 
     private void seed() throws Exception {
         mvc.perform(post("/api/warehouses").contentType(MediaType.APPLICATION_JSON).content("""
@@ -50,6 +64,8 @@ class JobEnqueueFailureTest extends AbstractApiTest {
     @Test
     void ifTheMessageCannotBePublishedTheRequestIs503AndTheJobIsMarkedFailed() throws Exception {
         doThrow(new IllegalStateException("broker down")).when(publisher).publish(any());
+        double requestedBefore = metric("rutaflex.jobs.requested", null);
+        double failedBefore = metric("rutaflex.jobs.finished", "failed");
         mvc.perform(post("/api/warehouses").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name": "A", "address": "B", "location": {"lat": 40.19, "lon": -3.65}}"""));
         String warehouse = jdbc.queryForObject("SELECT id::text FROM warehouse", String.class);
@@ -64,6 +80,9 @@ class JobEnqueueFailureTest extends AbstractApiTest {
                 .andExpect(jsonPath("$.detail").value("The optimization could not be queued, try again shortly"));
 
         assertThat(jdbc.queryForObject("SELECT status FROM optimization_job", String.class)).isEqualTo("FAILED");
+        // Pedido y fallido a la vez: pedidos = completados + fallidos + en curso sigue cuadrando.
+        assertThat(metric("rutaflex.jobs.requested", null) - requestedBefore).isEqualTo(1.0);
+        assertThat(metric("rutaflex.jobs.finished", "failed") - failedBefore).isEqualTo(1.0);
         assertThat(jdbc.queryForObject("SELECT failure_reason FROM optimization_job", String.class))
                 .contains("could not be queued");
         // Al quedar FAILED, el indice de trabajo activo no bloquea el siguiente intento.

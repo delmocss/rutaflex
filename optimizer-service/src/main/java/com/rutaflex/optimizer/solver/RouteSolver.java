@@ -23,16 +23,34 @@ public class RouteSolver {
 
     /** Con FULL_ASSERT el solver comprueba tras cada movimiento que la puntuación incremental coincide con la recalculada. */
     public RouteSolver(Duration spentLimit, Duration unimprovedLimit, long randomSeed, EnvironmentMode mode) {
+        this(new TerminationConfig().withSpentLimit(spentLimit).withUnimprovedSpentLimit(unimprovedLimit),
+                randomSeed, mode);
+    }
+
+    private RouteSolver(TerminationConfig termination, long randomSeed, EnvironmentMode mode) {
         SolverConfig config = new SolverConfig()
                 .withEnvironmentMode(mode)
                 .withSolutionClass(RoutePlan.class)
                 .withEntityClasses(RouteVehicle.class, Visit.class)
                 .withConstraintProviderClass(RouteConstraints.class)
                 .withRandomSeed(randomSeed)
-                .withTerminationConfig(new TerminationConfig()
-                        .withSpentLimit(spentLimit)
-                        .withUnimprovedSpentLimit(unimprovedLimit));
+                .withTerminationConfig(termination);
         this.factory = SolverFactory.create(config);
+    }
+
+    /**
+     * Solver que se detiene tras un número fijo de pasos en vez de por tiempo. Con la misma entrada, la misma
+     * semilla y los mismos pasos, la búsqueda recorre el mismo camino y da el mismo resultado en el mismo entorno
+     * (un límite de tiempo no: depende de lo rápida que sea la máquina). No se ha comprobado entre plataformas.
+     * Es lo que se usa para medir.
+     *
+     * <p>El límite se aplica a cada fase por separado: es un tope de pasos de la búsqueda local, pero también de
+     * la construcción inicial. Debe ser holgadamente mayor que el número de paradas (miles), o la construcción
+     * se corta y quedan paradas sin asignar.
+     */
+    public static RouteSolver withStepLimit(int steps, long randomSeed) {
+        return new RouteSolver(new TerminationConfig().withStepCountLimit(steps), randomSeed,
+                EnvironmentMode.REPRODUCIBLE);
     }
 
     public RoutePlan solve(RoutePlan problem) {
