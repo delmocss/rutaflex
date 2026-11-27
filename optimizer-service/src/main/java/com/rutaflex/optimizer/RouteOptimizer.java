@@ -35,7 +35,7 @@ public class RouteOptimizer {
         long started = System.nanoTime();
 
         RoutePlan problem = toPlan(request);
-        double baselineKm = baselineKm(problem);
+        double baselineKm = Baselines.arrivalOrder(problem).km();
         RoutePlan solution = solver.solve(problem);
 
         if (solution.getScore().hardScore() < 0) {
@@ -49,7 +49,7 @@ public class RouteOptimizer {
             if (vehicle.getVisits().isEmpty()) {
                 continue;
             }
-            double km = routeKm(vehicle, vehicle.getVisits());
+            double km = Baselines.routeKm(vehicle, vehicle.getVisits());
             totalKm += km;
             List<RouteStop> stops = new ArrayList<>();
             int sequence = 1;
@@ -62,57 +62,7 @@ public class RouteOptimizer {
         return new OptimizationCompleted(request.jobId(), routes, round(totalKm), round(baselineKm), millis);
     }
 
-    /**
-     * Reparto sin optimizar: las paradas en el orden en que llegaron, cada una a la primera furgoneta en la
-     * que quepa; si ya no cabe en ninguna (el empaquetado en orden puede fallar aunque exista solución), va a
-     * la más vacía. Es una referencia de distancia: no mira franjas horarias ni jornada, y nunca impide optimizar.
-     */
-    double baselineKm(RoutePlan problem) {
-        List<RouteVehicle> vans = problem.getVehicles();
-        List<List<Visit>> loads = new ArrayList<>();
-        int[] used = new int[vans.size()];
-        for (int i = 0; i < vans.size(); i++) {
-            loads.add(new ArrayList<>());
-        }
-        for (Visit visit : problem.getVisits()) {
-            int target = -1;
-            for (int i = 0; i < vans.size() && target < 0; i++) {
-                if (used[i] + visit.getParcels() <= vans.get(i).getCapacityParcels()) {
-                    target = i;
-                }
-            }
-            if (target < 0) {
-                target = 0;
-                for (int i = 1; i < vans.size(); i++) {
-                    if (vans.get(i).getCapacityParcels() - used[i] > vans.get(target).getCapacityParcels() - used[target]) {
-                        target = i;
-                    }
-                }
-            }
-            loads.get(target).add(visit);
-            used[target] += visit.getParcels();
-        }
-        double km = 0;
-        for (int i = 0; i < vans.size(); i++) {
-            km += routeKm(vans.get(i), loads.get(i));
-        }
-        return km;
-    }
-
-    /** Km de una ruta almacén → paradas en orden → almacén. */
-    private static double routeKm(RouteVehicle vehicle, List<Visit> visits) {
-        if (visits.isEmpty()) {
-            return 0;
-        }
-        long meters = vehicle.distanceDepot(visits.get(0));
-        for (int i = 1; i < visits.size(); i++) {
-            meters += vehicle.distance(visits.get(i - 1), visits.get(i));
-        }
-        meters += vehicle.distanceDepot(visits.get(visits.size() - 1));
-        return meters / 1000.0;
-    }
-
-    private RoutePlan toPlan(OptimizationRequested request) {
+    RoutePlan toPlan(OptimizationRequested request) {
         var depot = request.warehouse().location();
         List<RouteVehicle> vehicles = request.vehicles().stream()
                 .map(v -> new RouteVehicle(v.id(), v.name(), v.capacityParcels(), seconds(v.shiftStart()),

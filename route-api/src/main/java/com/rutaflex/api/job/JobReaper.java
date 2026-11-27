@@ -25,9 +25,12 @@ class JobReaper {
 
     private final OptimizationJobRepository jobs;
     private final Duration timeout;
+    private final JobMetrics metrics;
 
-    JobReaper(OptimizationJobRepository jobs, @Value("${rutaflex.jobs.timeout}") Duration timeout) {
+    JobReaper(OptimizationJobRepository jobs, JobMetrics metrics,
+              @Value("${rutaflex.jobs.timeout}") Duration timeout) {
         this.jobs = jobs;
+        this.metrics = metrics;
         this.timeout = timeout;
     }
 
@@ -37,6 +40,7 @@ class JobReaper {
             int closed = jobs.failStale(timeout.toSeconds(),
                     "The job did not finish within " + describe(timeout) + ": its result never arrived");
             if (closed > 0) {
+                metrics.reaped(closed);
                 log.warn("Closed {} stuck optimization job(s) after {}", closed, describe(timeout));
             }
         } catch (RuntimeException e) {

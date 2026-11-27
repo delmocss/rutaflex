@@ -32,16 +32,12 @@ import org.junit.jupiter.api.Test;
 /** Resuelve el dataset sintético real (80 paradas en Madrid sur) y comprueba la solución con un cálculo independiente. */
 class RouteOptimizerTest {
 
-    private static final GeoPoint DEPOT = new GeoPoint(40.1985, -3.6560);
-    private static final Pattern CSV_LINE =
-            Pattern.compile("^(?:\"([^\"]*)\"|([^,]*)),([\\d.]+),(-?[\\d.]+),(\\d+),(\\d{2}:\\d{2})?,(\\d{2}:\\d{2})?$");
-
     private static List<Stop> sampleStops;
     private static RouteOptimizer optimizer;
 
     @BeforeAll
     static void load() throws IOException {
-        sampleStops = readSampleStops();
+        sampleStops = SampleDataset.stops();
         optimizer = new RouteOptimizer(new RouteSolver(Duration.ofSeconds(20), Duration.ofSeconds(6), 42L),
                 Assumptions.DEFAULT);
     }
@@ -247,31 +243,24 @@ class RouteOptimizerTest {
 
     private static OptimizationRequested request(List<Stop> stops, List<Vehicle> vehicles) {
         return new OptimizationRequested(UUID.randomUUID(), LocalDate.of(2026, 12, 14),
-                new Warehouse(UUID.randomUUID(), "Almacen", DEPOT), vehicles, stops);
+                new Warehouse(UUID.randomUUID(), "Almacen", SampleDataset.DEPOT), vehicles, stops);
     }
 
-    /** Cuatro furgonetas de 60 bultos, como en el dataset de ejemplo: dos de 8 a 15 y dos de 9 a 16. */
     private static List<Vehicle> fleet() {
-        List<Vehicle> vans = new ArrayList<>();
-        for (int i = 1; i <= 4; i++) {
-            int start = i <= 2 ? 8 : 9;
-            vans.add(new Vehicle(UUID.randomUUID(), "Furgoneta " + i, 60, LocalTime.of(start, 0),
-                    LocalTime.of(start + 7, 0)));
-        }
-        return vans;
+        return SampleDataset.fleet();
     }
 
     private static double independentKm(VehicleRoute route, Map<UUID, Stop> stops) {
         double meters = 0;
-        double lat = DEPOT.lat();
-        double lon = DEPOT.lon();
+        double lat = SampleDataset.DEPOT.lat();
+        double lon = SampleDataset.DEPOT.lon();
         for (RouteStop stop : route.stops()) {
             GeoPoint to = stops.get(stop.stopId()).location();
             meters += haversine(lat, lon, to.lat(), to.lon()) * 1.3;
             lat = to.lat();
             lon = to.lon();
         }
-        meters += haversine(lat, lon, DEPOT.lat(), DEPOT.lon()) * 1.3;
+        meters += haversine(lat, lon, SampleDataset.DEPOT.lat(), SampleDataset.DEPOT.lon()) * 1.3;
         return meters / 1000.0;
     }
 
@@ -281,8 +270,8 @@ class RouteOptimizerTest {
      */
     private static int independentReturn(VehicleRoute route, Map<UUID, Stop> stops, Vehicle van) {
         double clock = van.shiftStart().toSecondOfDay();
-        double lat = DEPOT.lat();
-        double lon = DEPOT.lon();
+        double lat = SampleDataset.DEPOT.lat();
+        double lon = SampleDataset.DEPOT.lon();
         for (RouteStop stop : route.stops()) {
             Stop data = stops.get(stop.stopId());
             clock += haversine(lat, lon, data.location().lat(), data.location().lon()) * 1.3 / (30.0 / 3.6);
@@ -297,7 +286,7 @@ class RouteOptimizerTest {
             lat = data.location().lat();
             lon = data.location().lon();
         }
-        clock += haversine(lat, lon, DEPOT.lat(), DEPOT.lon()) * 1.3 / (30.0 / 3.6);
+        clock += haversine(lat, lon, SampleDataset.DEPOT.lat(), SampleDataset.DEPOT.lon()) * 1.3 / (30.0 / 3.6);
         return (int) Math.ceil(clock);
     }
 
@@ -309,25 +298,5 @@ class RouteOptimizerTest {
         double dl = Math.toRadians(lon2 - lon1);
         double a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
         return 2 * r * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    private static List<Stop> readSampleStops() throws IOException {
-        try (var in = RouteOptimizerTest.class.getResourceAsStream("/madrid-sur-stops.csv")) {
-            assertThat(in).isNotNull();
-            List<String> lines = new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().skip(1).toList();
-            List<Stop> stops = new ArrayList<>();
-            for (String line : lines) {
-                Matcher m = CSV_LINE.matcher(line);
-                assertThat(m.matches()).as(line).isTrue();
-                String address = m.group(1) != null ? m.group(1) : m.group(2);
-                LocalTime start = m.group(6) == null ? null : LocalTime.parse(m.group(6));
-                LocalTime end = m.group(7) == null ? null : LocalTime.parse(m.group(7));
-                stops.add(new Stop(UUID.randomUUID(), address,
-                        new GeoPoint(Double.parseDouble(m.group(3)), Double.parseDouble(m.group(4))),
-                        Integer.parseInt(m.group(5)), start, end));
-            }
-            assertThat(stops).hasSize(80);
-            return stops;
-        }
     }
 }

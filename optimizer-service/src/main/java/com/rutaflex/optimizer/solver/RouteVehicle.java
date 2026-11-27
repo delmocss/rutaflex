@@ -89,6 +89,14 @@ public class RouteVehicle {
         return shiftEnd;
     }
 
+    public double getDepotLat() {
+        return depotLat;
+    }
+
+    public double getDepotLon() {
+        return depotLon;
+    }
+
     public List<Visit> getVisits() {
         return visits;
     }
