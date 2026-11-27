@@ -13,6 +13,9 @@ import org.junit.jupiter.api.Test;
  */
 class ReproducibilityTest {
 
+    /** Ver {@link #theFullDatasetGivesAPinnedResultForASeedAndStepLimit()}. */
+    private static final double PINNED_KM_3000_STEPS_SEED_1 = 221.03;
+
     private static RouteOptimizer optimizer(int steps, long seed) {
         return new RouteOptimizer(RouteSolver.withStepLimit(steps, seed), Assumptions.DEFAULT);
     }
@@ -27,6 +30,19 @@ class ReproducibilityTest {
         assertThat(second.totalKm()).isEqualTo(first.totalKm());
         assertThat(second.baselineKm()).isEqualTo(first.baselineKm());
         assertThat(second.routes()).isEqualTo(first.routes());
+    }
+
+    /**
+     * El valor está fijado: si cambia, o ha cambiado el modelo (restricciones, supuestos, referencias de tiempos...)
+     * y hay que actualizarlo a propósito, o la búsqueda ya no es reproducible. Como se ejecuta en el CI (Linux)
+     * y en local (Windows), también comprueba, de paso, que la misma semilla da el mismo resultado en ambos.
+     */
+    @Test
+    void theFullDatasetGivesAPinnedResultForASeedAndStepLimit() {
+        OptimizationCompleted result = optimizer(3000, 1).optimize(SampleDataset.request());
+
+        assertThat(result.totalKm()).isEqualTo(PINNED_KM_3000_STEPS_SEED_1);
+        assertThat(result.baselineKm()).isEqualTo(793.8);
     }
 
     @Test

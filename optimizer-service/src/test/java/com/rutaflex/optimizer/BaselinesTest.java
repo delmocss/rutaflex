@@ -120,4 +120,97 @@ class BaselinesTest {
         assertThat(a.getArrivalTime()).isNull();
         assertThat(problem.getVehicles().get(0).getVisits()).isEmpty();
     }
+
+    // ---- el barrido con paradas en distintas direcciones (el angulo importa de verdad) ----
+
+    /** Parada a {@code dLat}/{@code dLon} grados del almacén, que está en (40,0, -3,7). */
+    private static Visit at(String name, double dLat, double dLon, int parcels) {
+        return new Visit(UUID.nameUUIDFromBytes(name.getBytes()), name, 40.0 + dLat, -3.7 + dLon, parcels, null, null,
+                SIMPLE);
+    }
+
+    private static List<String> names(List<Visit> route) {
+        return route.stream().map(Visit::getAddress).toList();
+    }
+
+    /** Qué paradas lleva cada furgoneta (el orden dentro de la ruta lo decide el vecino más cercano, no el barrido). */
+    private static List<java.util.Set<String>> sectors(Baselines.Result result) {
+        return result.routes().stream().map(route -> (java.util.Set<String>) new java.util.TreeSet<>(names(route)))
+                .toList();
+    }
+
+    @Test
+    void theSweepGivesEachVanAContiguousSectorStartingFromTheSouth() {
+        RoutePlan problem = new RoutePlan(List.of(van(6, 20 * 3600), van(6, 20 * 3600)),
+                new ArrayList<>(List.of(at("N", 0.01, 0, 3), at("E", 0, 0.01, 3), at("S", -0.01, 0, 3),
+                        at("W", 0, -0.01, 3))));
+
+        Baselines.Result result = Baselines.sweepNearest(problem);
+
+        // El corte está en el sur, y una parada exactamente al sur cae en el corte: cuenta como la primera.
+        // Orden del barrido: S, O, N, E. La primera furgoneta se llena con S y O; la segunda, con N y E.
+        assertThat(sectors(result)).containsExactly(java.util.Set.of("S", "W"), java.util.Set.of("N", "E"));
+        assertThat(result.overloadedVans()).isZero();
+    }
+
+    @Test
+    void twoStopsOnEitherSideOfTheCutEndUpInDifferentVansAndRotatingTheCutChangesIt() {
+        RoutePlan problem = new RoutePlan(List.of(van(6, 20 * 3600), van(6, 20 * 3600)),
+                new ArrayList<>(List.of(at("SW", -0.01, -0.001, 3), at("N", 0.01, 0, 3),
+                        at("SE", -0.01, 0.001, 3))));
+
+        // Corte en el sur: SO es la primera y SE la última, aunque están juntas: acaban en furgonetas distintas.
+        assertThat(sectors(Baselines.sweepNearest(problem)))
+                .containsExactly(java.util.Set.of("SW", "N"), java.util.Set.of("SE"));
+        // Cortando por el norte, SE y SO quedan seguidas en el orden y, con ellas, N: otro reparto.
+        assertThat(sectors(Baselines.sweepNearest(problem, 0)))
+                .containsExactly(java.util.Set.of("N", "SE"), java.util.Set.of("SW"));
+    }
+
+    @Test
+    void theSweepRangeTriesEveryCutAndTheDefaultCutIsInsideIt() {
+        RoutePlan problem = new RoutePlan(List.of(van(6, 20 * 3600), van(6, 20 * 3600)),
+                new ArrayList<>(List.of(at("N", 0.01, 0, 3), at("E", 0, 0.01, 3), at("S", -0.01, 0, 3),
+                        at("W", 0, -0.01, 3))));
+
+        var range = Baselines.sweepRange(problem, 72);
+
+        assertThat(range.getCount()).isEqualTo(72);
+        assertThat(range.getMin()).isLessThanOrEqualTo(Baselines.sweepNearest(problem).km());
+        assertThat(range.getMax()).isGreaterThanOrEqualTo(Baselines.sweepNearest(problem).km());
+    }
+
+    @Test
+    void whenNothingFitsTheSweepSaysSoInsteadOfSilentlyOverloadingAVan() {
+        RoutePlan roomy = plan(List.of(van(10, 20 * 3600)), stop(1, 2, null, null), stop(2, 2, null, null));
+        RoutePlan tight = plan(List.of(van(3, 20 * 3600)), stop(1, 2, null, null), stop(2, 2, null, null));
+
+        assertThat(Baselines.sweepNearest(roomy).overloadedVans()).isZero();
+        assertThat(Baselines.arrivalOrder(roomy).overloadedVans()).isZero();
+        assertThat(Baselines.sweepNearest(tight).overloadedVans()).isEqualTo(1);
+        assertThat(Baselines.arrivalOrder(tight).overloadedVans()).isEqualTo(1);
+    }
+
+    @Test
+    void everyStopIsAssignedExactlyOnce() {
+        RoutePlan problem = new RoutePlan(List.of(van(5, 20 * 3600), van(5, 20 * 3600)),
+                new ArrayList<>(List.of(at("a", 0.01, 0.01, 3), at("b", -0.01, 0.01, 3), at("c", -0.01, -0.01, 3),
+                        at("d", 0.01, -0.01, 3))));
+
+        for (Baselines.Result result : List.of(Baselines.arrivalOrder(problem), Baselines.sweepNearest(problem))) {
+            assertThat(result.routes().stream().flatMap(List::stream).map(Visit::getAddress))
+                    .containsExactlyInAnyOrder("a", "b", "c", "d");
+        }
+    }
+
+    @Test
+    void aVanThatFillsUpHandsTheRestOfItsSectorToTheNextVanInsteadOfLookingForLooseGaps() {
+        // Orden del barrido: W (4 bultos), N (4), E (2). Con capacidad 6: W llena casi la primera; N ya no cabe y
+        // abre la segunda; E sigue a N (mismo sector) aunque aún quepa en la primera.
+        RoutePlan problem = new RoutePlan(List.of(van(6, 20 * 3600), van(6, 20 * 3600)),
+                new ArrayList<>(List.of(at("W", 0, -0.01, 4), at("N", 0.01, 0, 4), at("E", 0, 0.01, 2))));
+
+        assertThat(sectors(Baselines.sweepNearest(problem)))
+                .containsExactly(java.util.Set.of("W"), java.util.Set.of("N", "E"));
+    }
 }

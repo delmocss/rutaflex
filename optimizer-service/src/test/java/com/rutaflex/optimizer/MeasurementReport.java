@@ -17,7 +17,7 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /**
  * Genera {@code docs/measurement.md}: cuántos km ahorra el optimizador sobre el dataset de ejemplo y cómo se
- * ha medido. No se ejecuta con {@code mvn verify} (tarda más de 20 minutos); se lanza a propósito:
+ * ha medido. No se ejecuta con {@code mvn verify} (tarda unos 10 minutos); se lanza a propósito:
  *
  * <pre>mvn -pl optimizer-service -am test -Dtest=MeasurementReport -Drutaflex.measure=true</pre>
  *
@@ -27,6 +27,8 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 class MeasurementReport {
 
     private static final int STEPS = Integer.getInteger("rutaflex.measure.steps", 60_000);
+    /** Cortes del círculo que se prueban para ver cuánto depende el barrido de dónde se corta. */
+    private static final int CUTS = 72;
     private static final int SEEDS = Integer.getInteger("rutaflex.measure.seeds", 3);
 
     /** Pasos con los que se dibuja la curva de convergencia (siempre con la semilla 1). */
@@ -40,9 +42,10 @@ class MeasurementReport {
         Assumptions assumptions = Assumptions.DEFAULT;
 
         // Las referencias, calculadas sobre el mismo problema que el optimizador.
-        RoutePlan problem = new RouteOptimizer(RouteSolver.withStepLimit(1, 1), assumptions).toPlan(request);
+        RoutePlan problem = new RouteOptimizer(RouteSolver.withStepLimit(1000, 1), assumptions).toPlan(request);
         Baselines.Result arrival = Baselines.arrivalOrder(problem);
         Baselines.Result sweep = Baselines.sweepNearest(problem);
+        var sweepCuts = Baselines.sweepRange(problem, CUTS);
 
         List<OptimizationCompleted> runs = new ArrayList<>();
         for (int seed = 1; seed <= SEEDS; seed++) {
@@ -60,7 +63,7 @@ class MeasurementReport {
         OptimizationRequested noWindows = SampleDataset.request(
                 request.stops().stream().map(s -> new OptimizationRequested.Stop(s.id(), s.address(), s.location(),
                         s.parcels(), null, null)).toList(), request.vehicles());
-        RoutePlan noWindowsProblem = new RouteOptimizer(RouteSolver.withStepLimit(1, 1), assumptions)
+        RoutePlan noWindowsProblem = new RouteOptimizer(RouteSolver.withStepLimit(1000, 1), assumptions)
                 .toPlan(noWindows);
         Baselines.Result sweepNoWindows = Baselines.sweepNearest(noWindowsProblem);
         List<OptimizationCompleted> ablation = new ArrayList<>();
@@ -81,12 +84,12 @@ class MeasurementReport {
 
         Path out = Path.of(System.getProperty("rutaflex.measure.out", "../docs/measurement.md"));
         Files.createDirectories(out.toAbsolutePath().getParent());
-        Files.writeString(out, report(request, arrival, sweep, runs, sweepNoWindows, ablation, curve));
+        Files.writeString(out, report(request, arrival, sweep, sweepCuts, runs, sweepNoWindows, ablation, curve));
         System.out.println("MEASURE written to " + out.toAbsolutePath().normalize());
     }
 
     private static String report(OptimizationRequested request, Baselines.Result arrival, Baselines.Result sweep,
-                                 List<OptimizationCompleted> runs, Baselines.Result sweepNoWindows,
+                                 java.util.DoubleSummaryStatistics sweepCuts, List<OptimizationCompleted> runs, Baselines.Result sweepNoWindows,
                                  List<OptimizationCompleted> ablation, double[] curve) {
         double[] km = runs.stream().mapToDouble(OptimizationCompleted::totalKm).toArray();
         double mean = java.util.Arrays.stream(km).average().orElseThrow();
@@ -113,24 +116,44 @@ class MeasurementReport {
                 + "comparación entre ellas es justa aunque la cifra absoluta no sea la de un recorrido por calle.\n\n");
 
         md.append("## Las referencias\n\n");
-        md.append("| Referencia | Km | Paradas que llegarían tarde | Furgonetas fuera de jornada |\n|---|---:|---:|---:|\n");
+        md.append("| Referencia | Km | Paradas que llegarían tarde | Furgonetas fuera de jornada | Furgonetas sobrecargadas |\n|---|---:|---:|---:|---:|\n");
         md.append(row("Orden de llegada (el «sin optimizar» del plan)", arrival));
         md.append(row("Barrido por ángulo + vecino más cercano", sweep));
         md.append("\n- **Orden de llegada**: las paradas tal como llegan, cada una a la primera furgoneta en la que "
                 + "quepa. Es la referencia más ingenua posible.\n");
         md.append("- **Barrido + vecino más cercano**: lo que haría un despachante con sentido común. Ordena las "
-                + "paradas por el ángulo alrededor del almacén, las reparte por sectores respetando la capacidad y, "
-                + "dentro de cada furgoneta, va siempre a la parada pendiente más cercana. Es mucho más exigente.\n");
+                + "paradas por el ángulo alrededor del almacén (cortando el círculo por el sur), las reparte por "
+                + "sectores mientras quepan y, dentro de cada furgoneta, va siempre a la parada pendiente más cercana. "
+                + "Es mucho más exigente. Si no cabe todo en orden, el sobrante va a la furgoneta más vacía y se "
+                + "cuenta en «sobrecargadas» (con estos datos, ninguna).\n");
         md.append("- Ninguna mira las franjas horarias ni la jornada, y por eso la tabla dice cuántas romperían. "
-                + "La solución optimizada **sí** las cumple (0 incumplimientos), así que compararla con una "
-                + "referencia inviable es **conservador**: frente a una referencia que las respetase, el ahorro "
-                + "sería mayor.\n\n");
+                + "El optimizador **sí** las respeta: si no encuentra un reparto que las cumpla, falla en vez de "
+                + "devolver una solución inválida. Comparar sus km con los de una referencia inviable **probablemente "
+                + "subestima** el ahorro frente a una referencia que las respetase, pero eso es un argumento, no una "
+                + "medición: la medición es la comparación «sin franjas» de más abajo.\n\n");
+
+        md.append("### El barrido depende de dónde se corte el círculo\n\n");
+        md.append(String.format(Locale.ROOT,
+                "El corte por el sur es una elección arbitraria, y las paradas que quedan a ambos lados del corte van a "
+                        + "furgonetas distintas aunque estén juntas. Probando %d cortes equiespaciados el barrido da entre "
+                        + "**%.1f** y **%.1f** km (media %.1f); el corte «de serie» (%.1f km) %s.%n%n",
+                sweepCuts.getCount(), sweepCuts.getMin(), sweepCuts.getMax(), sweepCuts.getAverage(), sweep.km(),
+                sweep.km() <= sweepCuts.getAverage() ? "queda por debajo de la media, es decir, favorece a la referencia"
+                        : "queda por encima de la media"));
+        md.append(String.format(Locale.ROOT,
+                "Frente al **mejor** corte posible (%.1f km, que nadie elegiría sin probarlos todos) el optimizador "
+                        + "ahorra de media %s.%n%n",
+                sweepCuts.getMin(), describePlain(sweepCuts.getMin(), runs.stream()
+                        .mapToDouble(OptimizationCompleted::totalKm).average().orElseThrow())));
 
         md.append("## El resultado\n\n");
         md.append(String.format(Locale.ROOT,
                 "El optimizador se detiene tras un número fijo de pasos de búsqueda (**%d**), no por tiempo: así el "
                         + "resultado no depende de lo rápida que sea la máquina. Se repite con %d semillas distintas "
-                        + "para ver cuánto varía.%n%n", STEPS, runs.size()));
+                        + "para ver cuánto varía (con tan pocas, es un rango, no una prueba de estabilidad). "
+                        + "**La aplicación limita el cálculo por tiempo** (30 s, o 8 s sin mejora), no por pasos: en una "
+                        + "máquina lenta llegará a menos pasos y su resultado será el de la fila correspondiente de la "
+                        + "curva de convergencia, que puede ser peor.%n%n", STEPS, runs.size()));
         md.append("| Semilla | Km optimizados | Ahorro frente al orden de llegada | Ahorro frente al barrido |\n|---:|---:|---:|---:|\n");
         for (int i = 0; i < runs.size(); i++) {
             double value = runs.get(i).totalKm();
@@ -152,9 +175,16 @@ class MeasurementReport {
         md.append(String.format(Locale.ROOT, "| Optimizador, sin franjas (media de %d semillas) | %.1f |%n", ablation.size(),
                 ablationMean));
         md.append(String.format(Locale.ROOT, "| Optimizador, **con** franjas (media) | %.1f |%n%n", mean));
-        md.append(String.format(Locale.ROOT,
-                "Respetar las %d franjas horarias cuesta, de media, %.1f km más (%s) que ignorarlas.%n%n", withWindow,
-                mean - ablationMean, percent(ablationMean, mean).replace("-", "")));
+        double extra = mean - ablationMean;
+        if (extra >= 0) {
+            md.append(String.format(Locale.ROOT,
+                    "Respetar las %d franjas horarias cuesta, de media, %.1f km más (%.1f %%) que ignorarlas.%n%n",
+                    withWindow, extra, 100 * extra / ablationMean));
+        } else {
+            md.append(String.format(Locale.ROOT,
+                    "Con estos datos respetar las %d franjas horarias no cuesta nada: sale %.1f km menos que "
+                            + "ignorarlas (diferencia dentro del ruido de la búsqueda).%n%n", withWindow, -extra));
+        }
 
         md.append("## Convergencia\n\n");
         md.append("Cuántos pasos de búsqueda hacen falta (semilla 1). Con pocos pasos la solución es peor; "
@@ -186,16 +216,27 @@ class MeasurementReport {
         md.append("```bash\nmvn -pl optimizer-service -am test -Dtest=MeasurementReport -Drutaflex.measure=true\n```\n\n");
         md.append(String.format(Locale.ROOT,
                 "Opciones: `-Drutaflex.measure.steps=%d` (pasos de búsqueda) y `-Drutaflex.measure.seeds=%d` "
-                        + "(semillas). Con los mismos valores y el mismo entorno (JDK 21, Timefold 1.35) sale el mismo fichero: la semilla 1 con 60000 pasos dio exactamente el mismo resultado en ejecuciones independientes. No se ha comprobado en otras plataformas, donde pequeñas diferencias de coma flotante podrían cambiar la búsqueda. "
-                        + "`ReproducibilityTest` lo comprueba en cada `mvn verify`.%n", STEPS, runs.size()));
+                        + "(semillas). Con los mismos valores y el mismo entorno sale el mismo resultado en km; "
+                        + "`ReproducibilityTest` comprueba en cada `mvn verify` que la misma semilla y los mismos pasos "
+                        + "dan exactamente el mismo resultado, y fija el valor de una ejecución corta sobre este "
+                        + "dataset (se ejecuta en Windows y en Linux). No se ha comprobado a más largo plazo ni en otras "
+                        + "plataformas.%n%n", STEPS, runs.size()));
+        md.append(String.format(Locale.ROOT, "Generado con JDK %s en %s.%n", System.getProperty("java.version"),
+                System.getProperty("os.name")));
         return md.toString();
     }
 
     private static String row(String name, Baselines.Result result) {
-        return String.format(Locale.ROOT, "| %s | %.1f | %d | %d |%n", name, result.km(), result.lateStops(),
-                result.shiftOverruns());
+        return String.format(Locale.ROOT, "| %s | %.1f | %d | %d | %d |%n", name, result.km(), result.lateStops(),
+                result.shiftOverruns(), result.overloadedVans());
     }
 
+    /** "ahorra 12.3 %" o "recorre 4.5 % más", según cuál gane. */
+    private static String describePlain(double reference, double value) {
+        double change = 100 * (reference - value) / reference;
+        return change >= 0 ? String.format(Locale.ROOT, "**%.1f %%** de los km", change)
+                : String.format(Locale.ROOT, "**-%.1f %%** (recorre más km que esa referencia)", -change);
+    }
     /** "ahorra 12.3 % de los km" o "recorre 4.5 % más km", según cuál gane. */
     private static String describe(double reference, double value) {
         double change = 100 * (reference - value) / reference;

@@ -81,6 +81,7 @@ public class OptimizationJobService {
         } catch (DuplicateKeyException e) {
             throw new ConflictException("An optimization for this warehouse and day is already in progress");
         }
+        metrics.requested();
 
         try {
             publisher.publish(problem(id, deliveryDate, warehouse, fleet, dayStops));
@@ -88,13 +89,14 @@ public class OptimizationJobService {
             // El trabajo no esta realmente en cola: se deja constancia y se avisa, en vez de dejarlo colgado.
             // Si ni siquiera eso se puede guardar, el 503 se da igual y el vigilante lo cerrara despues.
             try {
-                jobs.markFailed(id, "The job could not be queued: the message could not be delivered to Kafka");
+                if (jobs.markFailed(id, "The job could not be queued: the message could not be delivered to Kafka")) {
+                    metrics.failed();
+                }
             } catch (RuntimeException markFailure) {
                 log.error("Job {}: could not mark it FAILED after a publish failure; the reaper will", id, markFailure);
             }
             throw new ServiceUnavailableException("The optimization could not be queued, try again shortly", e);
         }
-        metrics.requested();
         return accepted(id, warehouse.id(), deliveryDate);
     }
 

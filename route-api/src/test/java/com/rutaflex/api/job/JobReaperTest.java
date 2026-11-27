@@ -32,6 +32,16 @@ class JobReaperTest extends AbstractApiTest {
         return jdbc.queryForObject("SELECT status FROM optimization_job WHERE id = ?", String.class, id);
     }
 
+    /** Valor del contador (0 si aún no existe); para {@code finished} suma solo la etiqueta result=failed. */
+    private double counter(String name) {
+        var search = registry.find(name);
+        if (name.equals("rutaflex.jobs.finished")) {
+            search = search.tag("result", "failed");
+        }
+        var counter = search.counter();
+        return counter == null ? 0 : counter.count();
+    }
+
     private void warehouse() {
         jdbc.update("INSERT INTO warehouse (name, address, location) VALUES ('W', 'A', "
                 + "ST_SetSRID(ST_MakePoint(-3.65, 40.19), 4326)::geography)");
@@ -40,6 +50,8 @@ class JobReaperTest extends AbstractApiTest {
     @Test
     void staleActiveJobsAreFailedAndRecentOrFinishedOnesAreLeftAlone() {
         warehouse();
+        double reapedBefore = counter("rutaflex.jobs.reaped");
+        double failedBefore = counter("rutaflex.jobs.finished");
         UUID staleQueued = insertJob("QUEUED", 3600, "2026-12-01");
         UUID staleRunning = insertJob("RUNNING", 3600, "2026-12-02");
         UUID recent = insertJob("QUEUED", 0, "2026-12-03");
@@ -55,8 +67,10 @@ class JobReaperTest extends AbstractApiTest {
         assertThat(jdbc.queryForObject("SELECT finished_at IS NOT NULL FROM optimization_job WHERE id = ?",
                 Boolean.class, staleQueued)).isTrue();
         assertThat(statusOf(oldCompleted)).isEqualTo("COMPLETED");
-        // Los trabajos cerrados por el vigilante quedan contados.
-        assertThat(registry.find("rutaflex.jobs.reaped").counter().count()).isGreaterThanOrEqualTo(2.0);
+        // Los dos trabajos cerrados por el vigilante quedan contados, exactamente una vez cada uno, y como fallidos.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(
+                () -> assertThat(counter("rutaflex.jobs.reaped") - reapedBefore).isEqualTo(2.0));
+        assertThat(counter("rutaflex.jobs.finished") - failedBefore).isEqualTo(2.0);
         // El reciente aun esta dentro de plazo (el test termina antes de que cumpla 2 s).
         assertThat(statusOf(recent)).isIn("QUEUED", "FAILED");
     }

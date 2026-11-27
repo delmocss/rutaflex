@@ -83,7 +83,8 @@ public class OptimizationHandler {
                 OptimizationCompleted result = takeUnsent(jobId);
                 if (result == null) {
                     result = optimizer.optimize(request);
-                    // Solo cuenta el calculo real (no la republicacion de un resultado ya calculado).
+                    // Solo cuenta los calculos que terminan con solucion (no la republicacion de un resultado ya
+                    // calculado ni los problemas sin solucion, que se cuentan aparte).
                     Timer.builder("rutaflex.optimizer.solve")
                             .description("Tiempo que tarda el optimizador en resolver un problema")
                             .register(metrics)
@@ -98,9 +99,10 @@ public class OptimizationHandler {
                 log.info("Job {}: {} km (baseline {} km) in {} ms", jobId, result.totalKm(), result.baselineKm(),
                         result.computeMillis());
             } catch (OptimizationException e) {
-                metrics.counter("rutaflex.optimizer.unsolvable").increment();
                 log.info("Job {}: no solution: {}", jobId, e.getMessage());
                 publisher.failed(new OptimizationFailed(jobId, e.getMessage(), 1));
+                // Despues de publicar: si publicar falla se reintenta, y el trabajo no debe contarse dos veces.
+                metrics.counter("rutaflex.optimizer.unsolvable").increment();
             }
         } catch (RuntimeException e) {
             processed.forget(jobId);

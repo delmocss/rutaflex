@@ -11,10 +11,12 @@ import org.springframework.stereotype.Component;
  * Métricas de las optimizaciones, visibles en {@code /actuator/metrics}:
  * <ul>
  *   <li>{@code rutaflex.optimization.compute}: tiempo de cálculo de cada optimización.</li>
- *   <li>{@code rutaflex.optimization.km.saved} y {@code .saved.percent}: km (y %) que ahorra cada una frente al
- *       reparto en orden de llegada.</li>
- *   <li>{@code rutaflex.jobs.requested}, {@code rutaflex.jobs.finished{result}} y {@code rutaflex.jobs.reaped}:
- *       cuántos trabajos se piden, cómo terminan y cuántos tuvo que cerrar el vigilante.</li>
+ *   <li>{@code rutaflex.optimization.km.saved} y {@code rutaflex.optimization.saved.percent}: km (y %) que ahorra
+ *       cada una frente al reparto en orden de llegada.</li>
+ *   <li>{@code rutaflex.jobs.requested}, {@code rutaflex.jobs.finished{result=completed|failed}} y
+ *       {@code rutaflex.jobs.reaped}: cuántos trabajos se piden, cómo terminan (también los que cierra el vigilante
+ *       o no llegaron a encolarse cuentan como fallidos) y, aparte, cuántos tuvo que cerrar el vigilante. Así,
+ *       pedidos = completados + fallidos + en curso.</li>
  * </ul>
  * Solo se registra cuando el resultado se aplica de verdad: un mensaje repetido o tardío (que no cambia nada) no
  * cuenta dos veces. Los km ahorrados nunca son negativos en la métrica (un resultado peor que la referencia cuenta 0).
@@ -58,7 +60,9 @@ class JobMetrics {
         registry.counter("rutaflex.jobs.finished", "result", "failed").increment();
     }
 
+    /** Los trabajos que cierra el vigilante terminan FALLIDOS: cuentan como tales y, aparte, como cerrados por plazo. */
     void reaped(int jobs) {
         registry.counter("rutaflex.jobs.reaped").increment(jobs);
+        registry.counter("rutaflex.jobs.finished", "result", "failed").increment(jobs);
     }
 }

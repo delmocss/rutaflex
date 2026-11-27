@@ -10,18 +10,24 @@ Las distancias son **estimadas**: línea recta (haversine) × 1,3 de factor de r
 
 ## Las referencias
 
-| Referencia | Km | Paradas que llegarían tarde | Furgonetas fuera de jornada |
-|---|---:|---:|---:|
-| Orden de llegada (el «sin optimizar» del plan) | 793.8 | 20 | 3 |
-| Barrido por ángulo + vecino más cercano | 131.5 | 6 | 0 |
+| Referencia | Km | Paradas que llegarían tarde | Furgonetas fuera de jornada | Furgonetas sobrecargadas |
+|---|---:|---:|---:|---:|
+| Orden de llegada (el «sin optimizar» del plan) | 793.8 | 20 | 3 | 0 |
+| Barrido por ángulo + vecino más cercano | 131.5 | 6 | 0 | 0 |
 
 - **Orden de llegada**: las paradas tal como llegan, cada una a la primera furgoneta en la que quepa. Es la referencia más ingenua posible.
-- **Barrido + vecino más cercano**: lo que haría un despachante con sentido común. Ordena las paradas por el ángulo alrededor del almacén, las reparte por sectores respetando la capacidad y, dentro de cada furgoneta, va siempre a la parada pendiente más cercana. Es mucho más exigente.
-- Ninguna mira las franjas horarias ni la jornada, y por eso la tabla dice cuántas romperían. La solución optimizada **sí** las cumple (0 incumplimientos), así que compararla con una referencia inviable es **conservador**: frente a una referencia que las respetase, el ahorro sería mayor.
+- **Barrido + vecino más cercano**: lo que haría un despachante con sentido común. Ordena las paradas por el ángulo alrededor del almacén (cortando el círculo por el sur), las reparte por sectores mientras quepan y, dentro de cada furgoneta, va siempre a la parada pendiente más cercana. Es mucho más exigente. Si no cabe todo en orden, el sobrante va a la furgoneta más vacía y se cuenta en «sobrecargadas» (con estos datos, ninguna).
+- Ninguna mira las franjas horarias ni la jornada, y por eso la tabla dice cuántas romperían. El optimizador **sí** las respeta: si no encuentra un reparto que las cumpla, falla en vez de devolver una solución inválida. Comparar sus km con los de una referencia inviable **probablemente subestima** el ahorro frente a una referencia que las respetase, pero eso es un argumento, no una medición: la medición es la comparación «sin franjas» de más abajo.
+
+### El barrido depende de dónde se corte el círculo
+
+El corte por el sur es una elección arbitraria, y las paradas que quedan a ambos lados del corte van a furgonetas distintas aunque estén juntas. Probando 72 cortes equiespaciados el barrido da entre **130.2** y **163.3** km (media 136.7); el corte «de serie» (131.5 km) queda por debajo de la media, es decir, favorece a la referencia.
+
+Frente al **mejor** corte posible (130.2 km, que nadie elegiría sin probarlos todos) el optimizador ahorra de media **10.0 %** de los km.
 
 ## El resultado
 
-El optimizador se detiene tras un número fijo de pasos de búsqueda (**60000**), no por tiempo: así el resultado no depende de lo rápida que sea la máquina. Se repite con 3 semillas distintas para ver cuánto varía.
+El optimizador se detiene tras un número fijo de pasos de búsqueda (**60000**), no por tiempo: así el resultado no depende de lo rápida que sea la máquina. Se repite con 3 semillas distintas para ver cuánto varía (con tan pocas, es un rango, no una prueba de estabilidad). **La aplicación limita el cálculo por tiempo** (30 s, o 8 s sin mejora), no por pasos: en una máquina lenta llegará a menos pasos y su resultado será el de la fila correspondiente de la curva de convergencia, que puede ser peor.
 
 | Semilla | Km optimizados | Ahorro frente al orden de llegada | Ahorro frente al barrido |
 |---:|---:|---:|---:|
@@ -73,4 +79,6 @@ En la aplicación el cálculo se limita por tiempo (30 s por defecto), no por pa
 mvn -pl optimizer-service -am test -Dtest=MeasurementReport -Drutaflex.measure=true
 ```
 
-Opciones: `-Drutaflex.measure.steps=60000` (pasos de búsqueda) y `-Drutaflex.measure.seeds=3` (semillas). Con los mismos valores y el mismo entorno (JDK 21, Timefold 1.35) sale el mismo fichero: la semilla 1 con 60000 pasos dio exactamente el mismo resultado en ejecuciones independientes. No se ha comprobado en otras plataformas, donde pequeñas diferencias de coma flotante podrían cambiar la búsqueda. `ReproducibilityTest` lo comprueba en cada `mvn verify`.
+Opciones: `-Drutaflex.measure.steps=60000` (pasos de búsqueda) y `-Drutaflex.measure.seeds=3` (semillas). Con los mismos valores y el mismo entorno sale el mismo resultado en km; `ReproducibilityTest` comprueba en cada `mvn verify` que la misma semilla y los mismos pasos dan exactamente el mismo resultado, y fija el valor de una ejecución corta sobre este dataset (se ejecuta en Windows y en Linux). No se ha comprobado a más largo plazo ni en otras plataformas.
+
+Generado con JDK 21.0.11 en Windows 11.

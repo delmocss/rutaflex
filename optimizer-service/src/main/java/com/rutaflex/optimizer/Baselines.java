@@ -24,8 +24,14 @@ import java.util.List;
  */
 final class Baselines {
 
-    /** @param lateStops paradas a las que se llegaría después de que cierre su franja */
-    record Result(double km, int lateStops, int shiftOverruns) {
+    /**
+     * @param lateStops      paradas a las que se llegaría después de que cierre su franja
+     * @param shiftOverruns  furgonetas que volverían después de que acabe su jornada
+     * @param overloadedVans furgonetas con más bultos que su capacidad (solo pasa si no cabe todo en orden y el
+     *                       sobrante se manda a la más vacía)
+     * @param routes         las paradas de cada furgoneta, en orden de visita
+     */
+    record Result(double km, int lateStops, int shiftOverruns, int overloadedVans, List<List<Visit>> routes) {
     }
 
     private Baselines() {
@@ -46,7 +52,17 @@ final class Baselines {
         return evaluate(vans, loads);
     }
 
+    /** El barrido empieza por el sur (corte en -π): es el corte «de serie». */
     static Result sweepNearest(RoutePlan problem) {
+        return sweepNearest(problem, -Math.PI);
+    }
+
+    /**
+     * El resultado del barrido depende de dónde se corta el círculo: las paradas se ordenan por el ángulo
+     * alrededor del almacén a partir de {@code startAngle}, y las dos paradas que quedan a ambos lados del corte
+     * acaban en furgonetas distintas aunque estén juntas.
+     */
+    static Result sweepNearest(RoutePlan problem, double startAngle) {
         List<RouteVehicle> vans = problem.getVehicles();
         RouteVehicle any = vans.get(0);
         double depotLat = any.getDepotLat();
@@ -55,7 +71,8 @@ final class Baselines {
         // Barrido: por el angulo alrededor del almacen (desempate por id, para que sea determinista).
         List<Visit> sorted = new ArrayList<>(problem.getVisits());
         sorted.sort(Comparator
-                .comparingDouble((Visit v) -> Math.atan2(v.getLon() - depotLon, v.getLat() - depotLat))
+                .comparingDouble((Visit v) -> fromStart(
+                        Math.atan2(v.getLon() - depotLon, v.getLat() - depotLat), startAngle))
                 .thenComparing(v -> v.getId().toString()));
 
         // Cada furgoneta toma un sector contiguo hasta llenarse.
@@ -79,6 +96,25 @@ final class Baselines {
             ordered.add(nearestNeighbour(vans.get(i), loads.get(i)));
         }
         return evaluate(vans, ordered);
+    }
+
+    /**
+     * Km del barrido probando {@code rotations} cortes distintos del círculo, equiespaciados. Sirve para ver cuánto
+     * depende la referencia de dónde se corta: el corte de serie puede ser, por casualidad, bueno o malo.
+     */
+    static java.util.DoubleSummaryStatistics sweepRange(RoutePlan problem, int rotations) {
+        java.util.DoubleSummaryStatistics stats = new java.util.DoubleSummaryStatistics();
+        for (int i = 0; i < rotations; i++) {
+            stats.accept(sweepNearest(problem, -Math.PI + 2 * Math.PI * i / rotations).km());
+        }
+        return stats;
+    }
+
+    /** Ángulo medido desde {@code startAngle}, en [0, 2π). */
+    private static double fromStart(double angle, double startAngle) {
+        double twoPi = 2 * Math.PI;
+        double shifted = (angle - startAngle) % twoPi;
+        return shifted < 0 ? shifted + twoPi : shifted;
     }
 
     /** Km de una ruta almacén → paradas en orden → almacén. */
@@ -120,11 +156,15 @@ final class Baselines {
         double km = 0;
         int late = 0;
         int overruns = 0;
+        int overloaded = 0;
         for (int i = 0; i < vans.size(); i++) {
             RouteVehicle van = vans.get(i);
             List<Visit> route = loads.get(i);
             if (route.isEmpty()) {
                 continue;
+            }
+            if (route.stream().mapToInt(Visit::getParcels).sum() > van.getCapacityParcels()) {
+                overloaded++;
             }
             km += routeKm(van, route);
             int clock = van.getShiftStart();
@@ -143,7 +183,7 @@ final class Baselines {
                 overruns++;
             }
         }
-        return new Result(km, late, overruns);
+        return new Result(km, late, overruns, overloaded, loads);
     }
 
     private static List<List<Visit>> emptyLoads(int vans) {

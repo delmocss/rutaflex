@@ -1,6 +1,7 @@
 package com.rutaflex.api.job;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -84,6 +85,14 @@ class JobMetricsTest extends AbstractApiTest {
                 .isEqualTo(expected));
     }
 
+    // ---- esperas sobre la propia metrica (se registra despues de guardar el estado, en el hilo del listener) ----
+
+    private void awaitFinished(String result, double expected) {
+        double before = expected;
+        await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(100))
+                .untilAsserted(() -> assertThat(finished(result)).isCloseTo(before, within(1e-9)));
+    }
+
     // ---- tests ----
 
     @Test
@@ -95,14 +104,13 @@ class JobMetricsTest extends AbstractApiTest {
         UUID id = insertJob("RUNNING");
 
         publish(Topics.OPTIMIZATION_COMPLETED, id, completed(id, 120, 800, 8000));
-        awaitStatus(id, "COMPLETED");
 
+        awaitFinished("completed", done + 1);
         assertThat(count("rutaflex.optimization.compute")).isEqualTo(timers + 1);
-        assertThat(registry.find("rutaflex.optimization.compute").timer().totalTime(java.util.concurrent.TimeUnit.MILLISECONDS))
-                .isGreaterThanOrEqualTo(8000);
-        assertThat(total("rutaflex.optimization.km.saved") - saved).isEqualTo(680.0);
-        assertThat(total("rutaflex.optimization.saved.percent") - percent).isEqualTo(85.0);
-        assertThat(finished("completed") - done).isEqualTo(1.0);
+        assertThat(registry.find("rutaflex.optimization.compute").timer()
+                .totalTime(java.util.concurrent.TimeUnit.MILLISECONDS)).isGreaterThanOrEqualTo(8000);
+        assertThat(total("rutaflex.optimization.km.saved") - saved).isCloseTo(680.0, within(1e-9));
+        assertThat(total("rutaflex.optimization.saved.percent") - percent).isCloseTo(85.0, within(1e-9));
     }
 
     @Test
@@ -111,14 +119,15 @@ class JobMetricsTest extends AbstractApiTest {
         long timers = count("rutaflex.optimization.compute");
         UUID id = insertJob("RUNNING");
         publish(Topics.OPTIMIZATION_COMPLETED, id, completed(id, 100, 500, 1000));
-        awaitStatus(id, "COMPLETED");
+        awaitFinished("completed", done + 1);
 
         publish(Topics.OPTIMIZATION_COMPLETED, id, completed(id, 100, 500, 1000));
-        // Un trabajo testigo en el mismo topic: cuando se aplica, el duplicado ya se proceso.
+        // Un trabajo testigo en el mismo topic: cuando su metrica aparece, el duplicado ya se proceso.
         UUID witness = insertJob("QUEUED");
         publish(Topics.OPTIMIZATION_COMPLETED, witness, completed(witness, 50, 100, 10));
-        awaitStatus(witness, "COMPLETED");
+        awaitFinished("completed", done + 2);
 
+        // Si el duplicado se hubiera contado, el contador iria por encima de original + testigo.
         assertThat(finished("completed") - done).as("original + testigo, no el duplicado").isEqualTo(2.0);
         assertThat(count("rutaflex.optimization.compute") - timers).isEqualTo(2);
     }
@@ -127,11 +136,12 @@ class JobMetricsTest extends AbstractApiTest {
     void aResultWorseThanTheBaselineSavesZeroKmNeverNegative() throws Exception {
         double saved = total("rutaflex.optimization.km.saved");
         long summaries = count("rutaflex.optimization.km.saved");
+        double done = finished("completed");
         UUID id = insertJob("RUNNING");
 
         publish(Topics.OPTIMIZATION_COMPLETED, id, completed(id, 300, 200, 1000));
-        awaitStatus(id, "COMPLETED");
 
+        awaitFinished("completed", done + 1);
         assertThat(count("rutaflex.optimization.km.saved") - summaries).isEqualTo(1);
         assertThat(total("rutaflex.optimization.km.saved") - saved).isZero();
     }
@@ -144,10 +154,9 @@ class JobMetricsTest extends AbstractApiTest {
 
         publish(Topics.OPTIMIZATION_FAILED, running, new OptimizationFailed(running, "boom", 3));
         publish(Topics.OPTIMIZATION_FAILED, finishedJob, new OptimizationFailed(finishedJob, "late", 1));
-        awaitStatus(running, "FAILED");
         UUID witness = insertJob("QUEUED");
         publish(Topics.OPTIMIZATION_FAILED, witness, new OptimizationFailed(witness, "witness", 1));
-        awaitStatus(witness, "FAILED");
+        awaitFinished("failed", failed + 2);
 
         assertThat(finished("failed") - failed).as("el fallo real y el testigo; el tardio no").isEqualTo(2.0);
     }
@@ -172,9 +181,10 @@ class JobMetricsTest extends AbstractApiTest {
 
     @Test
     void theMetricsAreExposedInActuator() throws Exception {
+        double done = finished("completed");
         UUID id = insertJob("RUNNING");
         publish(Topics.OPTIMIZATION_COMPLETED, id, completed(id, 100, 400, 2000));
-        awaitStatus(id, "COMPLETED");
+        awaitFinished("completed", done + 1);
 
         mvc.perform(get("/actuator/metrics/rutaflex.optimization.km.saved"))
                 .andExpect(status().isOk())

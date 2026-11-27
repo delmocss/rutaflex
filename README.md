@@ -185,17 +185,20 @@ Sobre el dataset de ejemplo (80 paradas, 4 furgonetas), con el optimizador parad
 |---|---:|---:|
 | Reparto **sin ordenar** (orden de llegada): la referencia del plan | 793,8 | **85,2 %** |
 | Reparto **con sentido común** (barrido por ángulo + vecino más cercano) | 131,5 | **10,9 %** |
+| Lo mismo, con el **mejor** corte del barrido de los 72 probados | 130,2 | **10,0 %** |
 | Lo mismo, pero **sin franjas horarias** en ambos lados | 131,5 | 14,3 % (112,6 km) |
 
 Cómo leerlo, sin adornos:
 
-- El 85 % es cierto pero **es el techo, no una promesa**: se compara contra el reparto más ingenuo posible. Lo que cuenta frente a un despachante razonable es el **11 %**.
-- Esa referencia razonable es **inviable**: 6 paradas llegarían tarde a su franja. La solución del optimizador las cumple todas, así que el 11 % es una estimación conservadora.
+- El 85 % es cierto pero **es el techo, no una promesa**: se compara contra el reparto más ingenuo posible. Lo que cuenta frente a un despachante razonable es del orden del **10-11 %**.
+- Esa referencia razonable es **inviable**: 6 paradas llegarían tarde a su franja. La solución del optimizador las cumple todas, así que, probablemente, el ahorro frente a una referencia que las respetase sería mayor (es un argumento, no una medición: la medición es la comparación sin franjas).
+- El barrido **depende de dónde se corte el círculo**: según el corte da entre 130,2 y 163,3 km, y el de serie (131,5) favorece a la referencia. Por eso se cita también el ahorro frente al mejor corte, que nadie elegiría sin probarlos todos.
+- **La aplicación limita el cálculo por tiempo** (30 s), no por pasos: en una máquina lenta llega a menos pasos y su resultado puede ser peor (con 20 000 pasos, 157,7 km). Las cifras son las de 60 000 pasos.
 - Respetar las 28 franjas horarias cuesta unos 4,6 km (4 %) respecto a ignorarlas.
 - La búsqueda se aplana hacia los 80 000 pasos (116,3 km); con pocos pasos el resultado es peor (con 20 000, 157,7 km, peor que la referencia razonable).
 - Es un conjunto sintético de una zona y un día: demuestra el método, no un porcentaje para otro negocio. Las distancias son estimadas (línea recta × 1,3).
 
-**Es reproducible.** El optimizador se detiene por número de pasos, no por tiempo, y las referencias no usan aleatoriedad: con el mismo entorno la misma semilla da exactamente el mismo resultado (la semilla 1 dio 117,38 km en ejecuciones independientes, y `ReproducibilityTest` lo comprueba en cada `mvn verify`). El informe completo, con las tres semillas, la curva de convergencia y el método, lo genera este comando (tarda unos 9 minutos):
+**Es reproducible.** El optimizador se detiene por número de pasos, no por tiempo, y las referencias no usan aleatoriedad: con el mismo entorno la misma semilla da exactamente el mismo resultado (la semilla 1 dio 117,38 km en ejecuciones independientes, y `ReproducibilityTest` comprueba en cada `mvn verify` que la misma semilla y los mismos pasos dan el mismo resultado, y fija el valor de una ejecución corta sobre este dataset, que corre en Windows y en el CI de Linux). El informe completo, con las tres semillas, la curva de convergencia y el método, lo genera este comando (tarda unos 10 minutos):
 
 ```bash
 mvn -pl optimizer-service -am test -Dtest=MeasurementReport -Drutaflex.measure=true
@@ -210,9 +213,9 @@ Visibles en `/actuator/metrics` de la API:
 | Métrica | Qué mide |
 |---|---|
 | `rutaflex.optimization.compute` | Tiempo de cálculo de cada optimización |
-| `rutaflex.optimization.km.saved` / `.saved.percent` | Km (y %) que ahorra cada una frente al orden de llegada |
-| `rutaflex.jobs.requested`, `rutaflex.jobs.finished{result}` | Trabajos pedidos y cómo terminan (completados o fallidos) |
-| `rutaflex.jobs.reaped` | Trabajos que tuvo que cerrar el vigilante |
+| `rutaflex.optimization.km.saved` y `rutaflex.optimization.saved.percent` | Km (y %) que ahorra cada una frente al orden de llegada |
+| `rutaflex.jobs.requested`, `rutaflex.jobs.finished{result=completed\|failed}` | Trabajos pedidos y cómo terminan; los cerrados por el vigilante o que no llegaron a encolarse cuentan como fallidos, así que pedidos = completados + fallidos + en curso |
+| `rutaflex.jobs.reaped` | De los fallidos, cuántos tuvo que cerrar el vigilante por plazo |
 
 Solo se registra lo que se aplica de verdad: un resultado repetido o tardío no cuenta dos veces. El optimizador expone además `rutaflex.optimizer.solve` (tiempo de resolución) y `rutaflex.optimizer.unsolvable`.
 
